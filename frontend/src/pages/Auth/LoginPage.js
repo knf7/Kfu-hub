@@ -352,10 +352,6 @@ function LoginPage({ setAuth }) {
         }
     };
 
-    const handleGoogleRedirect = () => {
-        window.location.href = authAPI.getGoogleAuthUrl();
-    };
-
     // ── 2FA OTP Screen ──
     if (otpStep) {
         return (
