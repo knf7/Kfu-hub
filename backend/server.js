@@ -39,23 +39,35 @@ const reportsRoutes = require('./routes/reports');
 const subscriptionRoutes = require('./routes/subscription');
 const logger = require('./utils/logger');
 const metricsController = require('./controllers/metricsController');
-const { createBullBoard } = require('@bull-board/api');
-const { BullMQAdapter } = require('@bull-board/api/bullMQAdapter');
-const { ExpressAdapter } = require('@bull-board/express');
-const { emailQueue } = require('./utils/emailQueue');
+let createBullBoard;
+let BullMQAdapter;
+let ExpressAdapter;
+let emailQueue;
+try {
+    // Optional in serverless builds; avoid crashing when UI deps are missing.
+    ({ createBullBoard } = require('@bull-board/api'));
+    ({ BullMQAdapter } = require('@bull-board/api/bullMQAdapter'));
+    ({ ExpressAdapter } = require('@bull-board/express'));
+    ({ emailQueue } = require('./utils/emailQueue'));
+} catch (err) {
+    console.warn('[WARN] Bull Board disabled:', err.message);
+}
 const { redis } = require('./config/redis');
 const db = require('./config/database');
 const { createObservability } = require('./middleware/observability');
 
 validateEnv();
 
-// Initialize Bull Board for Queue Monitoring
-const serverAdapter = new ExpressAdapter();
-serverAdapter.setBasePath('/admin/queues');
-createBullBoard({
-    queues: [new BullMQAdapter(emailQueue)],
-    serverAdapter: serverAdapter,
-});
+// Initialize Bull Board for Queue Monitoring (if available)
+let serverAdapter;
+if (createBullBoard && BullMQAdapter && ExpressAdapter && emailQueue) {
+    serverAdapter = new ExpressAdapter();
+    serverAdapter.setBasePath('/admin/queues');
+    createBullBoard({
+        queues: [new BullMQAdapter(emailQueue)],
+        serverAdapter: serverAdapter,
+    });
+}
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -242,16 +254,17 @@ app.get('/api/ops/runtime-metrics', (req, res) => {
 
 // --- BullMQ Dashboard (Secured) ---
 // In production, you would attach authentication middleware here
-app.use('/admin/queues', (req, res, next) => {
-    // Simplistic auth wrapper, usually replaced by proper passport/JWT middleware
-    const authHeader = req.headers['authorization'] || req.query.key;
-    if (process.env.ADMIN_SECRET && authHeader === process.env.ADMIN_SECRET) {
-        return next();
-    }
-    // In development or if no auth enforced, you can uncomment next() directly
-    if (process.env.NODE_ENV === 'development') return next();
-    res.status(401).send('Unauthorized for Queue Monitoring');
-}, serverAdapter.getRouter());
+if (serverAdapter) {
+    app.use('/admin/queues', (req, res, next) => {
+        // Simplistic auth wrapper, usually replaced by proper passport/JWT middleware
+        const authHeader = req.headers['authorization'] || req.query.key;
+        if (process.env.ADMIN_SECRET && authHeader === process.env.ADMIN_SECRET) {
+            return next();
+        }
+        if (process.env.NODE_ENV === 'development') return next();
+        res.status(401).send('Unauthorized for Queue Monitoring');
+    }, serverAdapter.getRouter());
+}
 
 // Serve static files from uploads folder
 const path = require('path');
