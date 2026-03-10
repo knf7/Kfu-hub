@@ -80,6 +80,24 @@
     color: var(--text-muted);
 }
 
+.interest-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 50px;
+    border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+    border-radius: 1rem;
+    padding: 0 14px;
+    color: var(--text-primary);
+    background: color-mix(in srgb, var(--bg-card) 92%, transparent);
+}
+
+.interest-toggle input {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--coral);
+}
+
 .input {
     min-height: 50px;
     background: color-mix(in srgb, var(--bg-card) 92%, transparent);

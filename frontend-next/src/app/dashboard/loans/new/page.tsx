@@ -28,6 +28,7 @@ export default function AddLoanPage() {
         principalAmount: '',
         interestAmount: '',
         totalAmount: '',
+        applyInterest: true,
         bondNumber: '',
         bondDate: new Date().toISOString().split('T')[0],
         receiptImageUrl: '',
@@ -37,9 +38,9 @@ export default function AddLoanPage() {
         najiz_status: 'قيد التنفيذ'
     });
 
-    const calculateInterest = (principal: string) => {
+    const calculateInterest = (principal: string, applyInterest = formData.applyInterest) => {
         const principalNum = parseFloat(principal) || 0;
-        const interest = principalNum * 0.30;
+        const interest = applyInterest ? principalNum * 0.30 : 0;
         const total = principalNum + interest;
 
         setFormData(prev => ({
@@ -77,7 +78,7 @@ export default function AddLoanPage() {
                 customerId: customer.id,
                 amount: parseFloat(formData.totalAmount),
                 principal_amount: parseFloat(formData.principalAmount),
-                profit_percentage: 30,
+                profit_percentage: formData.applyInterest ? 30 : 0,
                 receiptNumber: formData.bondNumber,
                 receiptImageUrl: formData.receiptImageUrl || null,
                 transactionDate: formData.bondDate,
@@ -214,7 +215,24 @@ export default function AddLoanPage() {
                                 />
                             </div>
                             <div className="form-group">
-                                <label>مبلغ الفائدة (30%)</label>
+                                <label>خيارات الحساب</label>
+                                <label className="interest-toggle">
+                                    <input
+                                        type="checkbox"
+                                        checked={formData.applyInterest}
+                                        onChange={(e) => {
+                                            const nextApplyInterest = e.target.checked;
+                                            calculateInterest(formData.principalAmount, nextApplyInterest);
+                                            setFormData((prev) => ({ ...prev, applyInterest: nextApplyInterest }));
+                                        }}
+                                    />
+                                    <span>تطبيق نسبة الفائدة 30%</span>
+                                </label>
+                            </div>
+                        </div>
+                        <div className="form-row">
+                            <div className="form-group">
+                                <label>{formData.applyInterest ? 'مبلغ الفائدة (30%)' : 'مبلغ الفائدة (معطلة)'}</label>
                                 <input
                                     type="text"
                                     className="input calculated numeric-field"
@@ -345,7 +363,7 @@ export default function AddLoanPage() {
                 <div className="loan-info-card">
                     <h3>💡 معلومات القرض</h3>
                     <ul>
-                        <li>يتم حساب الفائدة تلقائياً بنسبة 30%</li>
+                        <li>{formData.applyInterest ? 'يتم حساب الفائدة تلقائياً بنسبة 30%' : 'تم تعطيل الفائدة لهذا القرض'}</li>
                         <li>رقم الهوية يجب أن يكون 10 أرقام</li>
                         <li>رقم الجوال يجب أن يبدأ بـ 05</li>
                         <li>يمكنك رفع القضية عبر ناجز مباشرة</li>
