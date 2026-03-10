@@ -39,18 +39,21 @@ const reportsRoutes = require('./routes/reports');
 const subscriptionRoutes = require('./routes/subscription');
 const logger = require('./utils/logger');
 const metricsController = require('./controllers/metricsController');
+const bullBoardEnabled = process.env.ENABLE_BULL_BOARD === 'true' && !process.env.VERCEL;
 let createBullBoard;
 let BullMQAdapter;
 let ExpressAdapter;
 let emailQueue;
-try {
-    // Optional in serverless builds; avoid crashing when UI deps are missing.
-    ({ createBullBoard } = require('@bull-board/api'));
-    ({ BullMQAdapter } = require('@bull-board/api/bullMQAdapter'));
-    ({ ExpressAdapter } = require('@bull-board/express'));
-    ({ emailQueue } = require('./utils/emailQueue'));
-} catch (err) {
-    console.warn('[WARN] Bull Board disabled:', err.message);
+if (bullBoardEnabled) {
+    try {
+        // Optional in serverless builds; avoid crashing when UI deps are missing.
+        ({ createBullBoard } = require('@bull-board/api'));
+        ({ BullMQAdapter } = require('@bull-board/api/bullMQAdapter'));
+        ({ ExpressAdapter } = require('@bull-board/express'));
+        ({ emailQueue } = require('./utils/emailQueue'));
+    } catch (err) {
+        console.warn('[WARN] Bull Board disabled:', err.message);
+    }
 }
 const { redis } = require('./config/redis');
 const db = require('./config/database');
@@ -60,13 +63,18 @@ validateEnv();
 
 // Initialize Bull Board for Queue Monitoring (if available)
 let serverAdapter;
-if (createBullBoard && BullMQAdapter && ExpressAdapter && emailQueue) {
-    serverAdapter = new ExpressAdapter();
-    serverAdapter.setBasePath('/admin/queues');
-    createBullBoard({
-        queues: [new BullMQAdapter(emailQueue)],
-        serverAdapter: serverAdapter,
-    });
+if (bullBoardEnabled && createBullBoard && BullMQAdapter && ExpressAdapter && emailQueue) {
+    try {
+        serverAdapter = new ExpressAdapter();
+        serverAdapter.setBasePath('/admin/queues');
+        createBullBoard({
+            queues: [new BullMQAdapter(emailQueue)],
+            serverAdapter: serverAdapter,
+        });
+    } catch (err) {
+        console.warn('[WARN] Bull Board init failed:', err.message);
+        serverAdapter = null;
+    }
 }
 
 const app = express();
