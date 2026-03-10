@@ -431,3 +431,230 @@
 .auth-back:hover {
     color: var(--navy-900);
 }
+
+/* ─── Login Page (Actual classes used by LoginPage.js) ─── */
+.login-page {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+    position: relative;
+}
+
+.login-container {
+    width: 100%;
+    max-width: 520px;
+    padding: 32px 28px;
+}
+
+.login-container.glass-card {
+    background: rgba(255, 255, 255, 0.92);
+    border-color: rgba(255, 255, 255, 0.35);
+}
+
+[data-theme="dark"] .login-container.glass-card {
+    background: rgba(15, 23, 42, 0.85);
+    border-color: rgba(255, 255, 255, 0.08);
+    color: #F8FAFC;
+}
+
+.login-header {
+    text-align: center;
+    margin-bottom: 22px;
+}
+
+.login-logo {
+    width: 62px;
+    height: 62px;
+    border-radius: 18px;
+    margin: 0 auto 16px;
+    background: linear-gradient(135deg, var(--coral), var(--coral-dark));
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: var(--shadow-coral);
+}
+
+.login-logo .logo-text {
+    font-size: 26px;
+    font-weight: 800;
+}
+
+.login-header h1 {
+    font-size: 24px;
+    font-weight: 800;
+    color: var(--text-primary);
+    margin-bottom: 6px;
+}
+
+.login-header p {
+    color: var(--text-secondary);
+    font-size: 14px;
+}
+
+[data-theme="dark"] .login-header h1 {
+    color: #F8FAFC;
+}
+
+[data-theme="dark"] .login-header p {
+    color: #E2E8F0;
+}
+
+.login-tabs {
+    display: flex;
+    gap: 8px;
+    background: rgba(15, 23, 42, 0.06);
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    border-radius: 999px;
+    padding: 6px;
+    margin-bottom: 18px;
+}
+
+.login-tabs button {
+    flex: 1;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    padding: 8px 12px;
+    border-radius: 999px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all var(--t-fast);
+}
+
+.login-tabs button.active {
+    background: #fff;
+    color: var(--text-primary);
+    box-shadow: var(--shadow-sm);
+}
+
+[data-theme="dark"] .login-tabs {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="dark"] .login-tabs button.active {
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+}
+
+.login-form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.login-form .form-group label {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+[data-theme="dark"] .login-form .form-group label {
+    color: #F1F5F9;
+}
+
+.login-form .form-group input {
+    width: 100%;
+    padding: 12px 14px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: #fff;
+    color: var(--text-primary);
+    font-size: 14px;
+    transition: border-color var(--t-fast), box-shadow var(--t-fast);
+}
+
+[data-theme="dark"] .login-form .form-group input {
+    background: rgba(15, 23, 42, 0.6);
+    border-color: rgba(255, 255, 255, 0.08);
+    color: #F8FAFC;
+}
+
+.login-form .form-group input:focus {
+    border-color: var(--coral);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.18);
+    outline: none;
+}
+
+.forgot-password-link {
+    color: var(--coral);
+    font-weight: 700;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 13px;
+}
+
+.submit-btn {
+    width: 100%;
+    padding: 12px 14px;
+    border: none;
+    border-radius: 12px;
+    background: linear-gradient(135deg, var(--coral), var(--coral-dark));
+    color: #fff;
+    font-size: 15px;
+    font-weight: 800;
+    cursor: pointer;
+    box-shadow: var(--shadow-coral);
+    transition: transform var(--t-fast), filter var(--t-fast);
+}
+
+.submit-btn:hover {
+    filter: brightness(1.05);
+}
+
+.submit-btn:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
+.error-message {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.25);
+    color: #B91C1C;
+    padding: 10px 12px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+[data-theme="dark"] .error-message {
+    color: #FCA5A5;
+    background: rgba(239, 68, 68, 0.15);
+    border-color: rgba(239, 68, 68, 0.35);
+}
+
+.field-error {
+    color: #EF4444;
+    font-size: 12px;
+    font-weight: 700;
+    margin-top: 6px;
+    display: inline-block;
+}
+
+.pw-strength {
+    margin-top: 10px;
+}
+
+.pw-bar-track {
+    height: 6px;
+    background: rgba(148, 163, 184, 0.25);
+    border-radius: 999px;
+    overflow: hidden;
+}
+
+.pw-bar-fill {
+    height: 100%;
+    border-radius: 999px;
+}
+
+.pw-label {
+    margin-top: 6px;
+    font-size: 12px;
+    font-weight: 700;
+    display: inline-block;
+}

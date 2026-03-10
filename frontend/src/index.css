@@ -18,10 +18,10 @@
   --slate-800: #1e293b;
   --slate-900: #0f172a;
 
-  /* ── Brand Colors — Exact Match ── */
-  --coral: #FF6B35;
-  --coral-light: #FF8C61;
-  --coral-dark: #FF5722;
+  /* ── Brand Colors (Blue Theme) ── */
+  --coral: #60A5FA;
+  --coral-light: #93C5FD;
+  --coral-dark: #3B82F6;
   --navy: #0F172A;
   --navy-mid: #1E293B;
   --navy-light: #334155;
@@ -44,7 +44,7 @@
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
   --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08);
   --shadow-lg: 0 12px 32px rgba(15, 23, 42, 0.15);
-  --shadow-coral: 0 8px 20px rgba(255, 107, 53, 0.25);
+  --shadow-coral: 0 8px 20px rgba(96, 165, 250, 0.28);
   --shadow-xl: 0 20px 40px rgba(15, 23, 42, 0.20);
 
   /* ── Radius — Matched to Target ── */
@@ -66,6 +66,10 @@
 
   /* ── Aliases ── */
   --accent: var(--coral);
+  --orange: var(--coral);
+  --orange-light: var(--coral-light);
+  --orange-dark: var(--coral-dark);
+  --shadow-orange: var(--shadow-coral);
   --font-family: 'Cairo', 'Tajawal', sans-serif;
 }
 

@@ -28,6 +28,8 @@ const IconChevronLeft = icon(<polyline points="15 18 9 12 15 6" />);
 const IconChevronRight = icon(<polyline points="9 18 15 12 9 6" />);
 const IconStore = icon(<><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></>);
 const IconUserEmployee = icon(<><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /><line x1="19" y1="8" x2="19" y2="14" /><line x1="22" y1="11" x2="16" y2="11" /></>);
+const IconSun = icon(<><circle cx="12" cy="12" r="4" /><line x1="12" y1="2" x2="12" y2="5" /><line x1="12" y1="19" x2="12" y2="22" /><line x1="4.22" y1="4.22" x2="6.34" y2="6.34" /><line x1="17.66" y1="17.66" x2="19.78" y2="19.78" /><line x1="2" y1="12" x2="5" y2="12" /><line x1="19" y1="12" x2="22" y2="12" /><line x1="4.22" y1="19.78" x2="6.34" y2="17.66" /><line x1="17.66" y1="6.34" x2="19.78" y2="4.22" /></>);
+const IconStar = icon(<polygon points="12 2 14.9 8.6 22 9.3 16.6 14 18.2 21 12 17.4 5.8 21 7.4 14 2 9.3 9.1 8.6 12 2" />);
 
 // ─── Nav Items (exact match to LayoutShell.tsx NAV_ITEMS + Employees added) ───
 const NAV_ITEMS = [
@@ -233,7 +235,9 @@ export default function Layout({ children }) {
                         className="theme-toggle-btn"
                         onClick={() => setDarkMode(!darkMode)}
                     >
-                        <span className="theme-icon">{darkMode ? '☀️' : '🌙'}</span>
+                        <span className="theme-icon">
+                            {darkMode ? <IconSun size={18} /> : <IconStar size={18} />}
+                        </span>
                         {!collapsed && (
                             <span className="theme-label">
                                 {darkMode ? 'وضع نهاري' : 'وضع ليلي'}
