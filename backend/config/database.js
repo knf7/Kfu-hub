@@ -7,6 +7,7 @@ const pool = new Pool({
     database: process.env.DB_NAME || 'loan_management',
     user: process.env.DB_USER || 'postgres',
     password: process.env.DB_PASSWORD,
+    ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: false },
     max: 20, // Prevents Postgres connection exhaustion on high loads
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 10000,
