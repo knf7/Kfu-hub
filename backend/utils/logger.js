@@ -1,16 +1,23 @@
 const pino = require('pino');
 
+const isDev = (process.env.NODE_ENV || 'development') === 'development';
+const usePretty = isDev && !process.env.VERCEL;
+
 // Create Pino Logger Instance
 const logger = pino({
     level: process.env.LOG_LEVEL || 'info',
-    transport: {
-        target: 'pino-pretty',
-        options: {
-            colorize: true,
-            translateTime: 'SYS:standard',
-            ignore: 'pid,hostname',
-        },
-    },
+    ...(usePretty
+        ? {
+              transport: {
+                  target: 'pino-pretty',
+                  options: {
+                      colorize: true,
+                      translateTime: 'SYS:standard',
+                      ignore: 'pid,hostname',
+                  },
+              },
+          }
+        : {}),
 });
 
 module.exports = {
