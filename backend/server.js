@@ -250,6 +250,7 @@ app.get('/health', async (req, res) => {
         payload.services.redis = 'up';
     } catch (e) {
         payload.services.redis = 'down';
+        console.error('Redis ping failed:', e.message);
     }
 
     const allUp = payload.services.database === 'up' && payload.services.redis === 'up';
@@ -279,6 +280,7 @@ app.get('/api/health', async (req, res) => {
         payload.services.redis = 'up';
     } catch (e) {
         payload.services.redis = 'down';
+        console.error('Redis ping failed:', e.message);
     }
 
     const allUp = payload.services.database === 'up' && payload.services.redis === 'up';
