@@ -1,0 +1,35 @@
+name: Ops - API Permission Checklist
+
+on:
+  schedule:
+    # Weekly on Mondays at 06:00 Asia/Riyadh (03:00 UTC)
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+
+jobs:
+  permission_check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: ./backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run permission checklist
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          ADMIN_SECRET: ${{ secrets.ADMIN_SECRET }}
+          TEST_MERCHANT_ID: ${{ secrets.TEST_MERCHANT_ID }}
+        run: npm run security:permissions

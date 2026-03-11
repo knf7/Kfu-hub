@@ -1,0 +1,46 @@
+name: Ops - Backup & Restore Verify
+
+on:
+  schedule:
+    # Daily at 02:30 Asia/Riyadh (23:30 UTC)
+    - cron: '30 23 * * *'
+  workflow_dispatch:
+
+jobs:
+  backup_verify:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: ./backend/package-lock.json
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Backup + restore check
+        env:
+          # Use Supabase session pooler host on IPv4 runners.
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_PORT: ${{ secrets.DB_PORT }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          BACKUP_EXCLUDE_SCHEMAS: ${{ secrets.BACKUP_EXCLUDE_SCHEMAS }}
+          BACKUP_EXCLUDE_EXTENSIONS: ${{ secrets.BACKUP_EXCLUDE_EXTENSIONS }}
+          BACKUP_RETENTION_DAYS: ${{ secrets.BACKUP_RETENTION_DAYS }}
+          PGSSLMODE: require
+        run: npm run backup:verify

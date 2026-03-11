@@ -1,0 +1,36 @@
+name: Ops - Monitor Check
+
+on:
+  schedule:
+    # Every 15 minutes
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+jobs:
+  monitor_check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: ./backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Monitor check
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          ADMIN_SECRET: ${{ secrets.ADMIN_SECRET }}
+          MONITOR_MAX_5XX_RATE: ${{ secrets.MONITOR_MAX_5XX_RATE }}
+          MONITOR_MAX_P95_MS: ${{ secrets.MONITOR_MAX_P95_MS }}
+          ALERT_MIN_REQUESTS: ${{ secrets.ALERT_MIN_REQUESTS }}
+        run: npm run monitor:check
