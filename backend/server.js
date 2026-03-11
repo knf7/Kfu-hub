@@ -348,7 +348,14 @@ app.use((req, res) => {
 
 // The error handler must be before any other error middleware and after all controllers
 if (process.env.SENTRY_DSN) {
-    app.use(Sentry.Handlers.errorHandler());
+    if (Sentry.Handlers && typeof Sentry.Handlers.errorHandler === 'function') {
+        app.use(Sentry.Handlers.errorHandler());
+    } else if (typeof Sentry.setupExpressErrorHandler === 'function') {
+        // Sentry v8+ uses setupExpressErrorHandler(app)
+        Sentry.setupExpressErrorHandler(app);
+    } else {
+        console.warn('[WARN] Sentry error handler is unavailable in this SDK version.');
+    }
 }
 
 // Global error handler
