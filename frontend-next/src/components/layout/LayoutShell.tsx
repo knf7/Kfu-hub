@@ -58,8 +58,6 @@ const GROUP_LABELS: Record<NavItem['group'], string> = {
   system: 'النظام',
 };
 
-const ALLOWED_PALETTES = new Set(['aero-silver']);
-
 function AseelLogoMark({ compact = false }: { compact?: boolean }) {
   return (
     <svg
