@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FiCheck, FiShield, FiTrendingUp, FiLayers, FiArrowLeft, FiActivity } from 'react-icons/fi';
+import { FiShield, FiTrendingUp, FiLayers, FiArrowLeft, FiActivity } from 'react-icons/fi';
 import './LandingPage.css';
 
 export default function LandingPage() {
