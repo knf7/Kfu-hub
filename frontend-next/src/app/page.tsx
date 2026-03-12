@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { ShieldCheck, BarChart3, Scale, ArrowLeft } from 'lucide-react';
+import { ShieldCheck, BarChart3, Scale, ArrowLeft, Linkedin, Mail, Phone } from 'lucide-react';
 
 function MiniLogo() {
   return (
@@ -261,8 +261,36 @@ export default function LandingPage() {
             </div>
           </div>
 
-          <div className="border-t border-slate-200 pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
-            <p className="text-slate-500 text-sm">© 2026 أصيل المالي. جميع الحقوق محفوظة.</p>
+          <div className="border-t border-slate-200 pt-8 flex flex-col items-center gap-3 text-center">
+            <p className="text-slate-500 text-sm">© 2026 أصيل المالية. جميع الحقوق محفوظة لأصيل المالية.</p>
+            <div className="flex flex-wrap items-center justify-center gap-4 text-sm text-slate-600">
+              <a
+                href="https://www.linkedin.com/in/khalid-alshammari-37ab95370?utm_source=share&utm_campaign=share_via&utm_content=profile&utm_medium=ios_app"
+                target="_blank"
+                rel="noreferrer noopener"
+                className="inline-flex items-center gap-2 hover:text-blue-600 transition-colors"
+                aria-label="LinkedIn"
+              >
+                <Linkedin className="h-4 w-4" />
+                LinkedIn
+              </a>
+              <a
+                href="mailto:aseel.ksa.sa.org@gmail.com"
+                className="inline-flex items-center gap-2 hover:text-blue-600 transition-colors"
+                aria-label="البريد الإلكتروني"
+              >
+                <Mail className="h-4 w-4" />
+                <span dir="ltr">aseel.ksa.sa.org@gmail.com</span>
+              </a>
+              <a
+                href="tel:0583719925"
+                className="inline-flex items-center gap-2 hover:text-blue-600 transition-colors"
+                aria-label="رقم التواصل"
+              >
+                <Phone className="h-4 w-4" />
+                <span dir="ltr">0583719925</span>
+              </a>
+            </div>
           </div>
         </div>
       </footer>
