@@ -4,5 +4,8 @@ module.exports = {
     testPathIgnorePatterns: ['/node_modules/', '/__tests__/integration/'],
     testTimeout: 30000,
     forceExit: true,
-    verbose: true
+    verbose: true,
+    transform: {
+        '^.+\\.js$': 'babel-jest'
+    }
 };
