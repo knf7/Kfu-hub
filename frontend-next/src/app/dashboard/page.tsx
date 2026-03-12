@@ -103,8 +103,12 @@ const ToastContainer = React.memo(function ToastContainer({ toasts }: { toasts: 
 
 // ─── Overdue Marquee ──────────────────────────
 const OverdueMarquee = React.memo(function OverdueMarquee({ clients }: { clients: any[] }) {
-    if (!clients || clients.length === 0) return null;
-    const full = useMemo(() => [...clients, ...clients], [clients]);
+    const safeClients = Array.isArray(clients) ? clients : [];
+    const full = useMemo(
+        () => (safeClients.length > 0 ? [...safeClients, ...safeClients] : []),
+        [safeClients]
+    );
+    if (full.length === 0) return null;
     return (
         <div className="overdue-marquee-wrap fade-up">
             <div className="marquee-label-pill">
