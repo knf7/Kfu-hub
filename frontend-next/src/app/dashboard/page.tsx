@@ -49,6 +49,12 @@ const INSIGHT_ICONS: Record<string, React.ReactNode> = {
     info: <Info size={18} color="var(--info)" />,
 };
 
+const STAT_CATEGORIES = [
+    { id: 'finance', label: 'الأرقام المالية', Icon: DollarSign },
+    { id: 'customers', label: 'العملاء والقروض', Icon: Users },
+    { id: 'najiz', label: 'قضايا ناجز', Icon: Shield },
+] as const;
+
 // ─── Stat Card ─────────────────────────────────
 const StatCard = React.memo(function StatCard({ label, value, sub, Icon, color, trend, loading, onClick }: any) {
     return (
@@ -203,11 +209,22 @@ export default function DashboardPage() {
     const [loading, setLoading] = useState(true);
     const [toasts, setToasts] = useState<any[]>([]);
     const [merchant, setMerchant] = useState<any>({});
+    const [visibleCategories, setVisibleCategories] = useState<string[]>(() => STAT_CATEGORIES.map((c) => c.id));
 
     const addToast = useCallback((toast: any) => {
         const id = Date.now() + Math.random();
         setToasts((prev: any[]) => [...prev, { id, ...toast }]);
         setTimeout(() => setToasts((prev: any[]) => prev.filter((t: any) => t.id !== id)), 6000);
+    }, []);
+
+    const toggleCategory = useCallback((id: string) => {
+        setVisibleCategories((prev) => (
+            prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+        ));
+    }, []);
+
+    const showAllCategories = useCallback(() => {
+        setVisibleCategories(STAT_CATEGORIES.map((c) => c.id));
     }, []);
 
     const fetchDashboard = useCallback(async () => {
@@ -314,6 +331,19 @@ export default function DashboardPage() {
     const pieData = useMemo(() => statusDist.filter((d: any) => d.count > 0), [statusDist]);
     const hasCharts = useMemo(() => debtTrend.length > 0 || pieData.length > 0, [debtTrend, pieData]);
     const ai = useMemo(() => aiData?.summary || {}, [aiData]);
+    const aiPredictions = useMemo(() => (
+        ai && typeof ai === 'object' && 'aiPredictions' in ai ? (ai as any).aiPredictions : null
+    ), [ai]);
+    const nextMonthBudget = useMemo(() => (
+        Number.isFinite(aiPredictions?.nextMonthBudget) ? aiPredictions.nextMonthBudget : null
+    ), [aiPredictions]);
+    const highRiskCapacityPercent = useMemo(() => (
+        Number.isFinite(aiPredictions?.highRiskCapacityPercent) ? aiPredictions.highRiskCapacityPercent : null
+    ), [aiPredictions]);
+    const hasAiPredictions = useMemo(
+        () => nextMonthBudget !== null && highRiskCapacityPercent !== null,
+        [nextMonthBudget, highRiskCapacityPercent]
+    );
     const insights = useMemo(() => aiData?.insights || [], [aiData]);
     const overdueClients = useMemo(() => aiData?.overdueClients || [], [aiData]);
     const recommendations = useMemo(() => aiData?.recommendations || [], [aiData]);
@@ -321,13 +351,115 @@ export default function DashboardPage() {
         () => ai.riskSegmentation || { highRisk: 0, medRisk: 0, lowRisk: 0 },
         [ai]
     );
+    const subscriptionPlan = useMemo(() => {
+        const plan = merchant?.subscriptionPlan || merchant?.subscription_plan || '';
+        return String(plan).toLowerCase();
+    }, [merchant]);
+
+    const handleNajizClick = useCallback(() => router.push('/dashboard/najiz'), [router]);
+    const handleDelayedClick = useCallback(() => router.push('/dashboard/loans?delayed=true'), [router]);
+    const handleNewLoanClick = useCallback(() => router.push('/dashboard/loans/new'), [router]);
+
+    const statCards = useMemo(() => ([
+        {
+            id: 'totalDebt',
+            category: 'finance',
+            label: 'إجمالي الديون',
+            Icon: DollarSign,
+            color: 'var(--coral)',
+            value: `${(parseFloat(metrics?.totalDebt) || 0).toLocaleString('en-US')} ﷼`,
+            sub: 'إجمالي المحفظة النشطة',
+        },
+        {
+            id: 'totalCustomers',
+            category: 'customers',
+            label: 'إجمالي العملاء',
+            Icon: Users,
+            color: 'var(--info)',
+            value: metrics?.totalCustomers || 0,
+            sub: `${metrics?.activeCustomers || 0} لديهم قروض نشطة`,
+        },
+        {
+            id: 'loansThisMonth',
+            category: 'customers',
+            label: 'قروض هذا الشهر',
+            Icon: Calendar,
+            color: 'var(--warning)',
+            value: metrics?.loansThisMonth || 0,
+            sub: 'تمت إضافتهم هذا الشهر',
+        },
+        {
+            id: 'najizCases',
+            category: 'najiz',
+            label: 'قضايا ناجز',
+            Icon: Shield,
+            color: 'var(--warning)',
+            value: metrics?.raisedCount || 0,
+            sub: 'قضايا مرفوعة في ناجز',
+            onClick: handleNajizClick,
+        },
+        {
+            id: 'najizRaised',
+            category: 'finance',
+            label: 'مبالغ ناجز المرفوعة',
+            Icon: Shield,
+            color: 'var(--info)',
+            value: `${(parseFloat(metrics?.najizRaisedAmount) || 0).toLocaleString('en-US')} ﷼`,
+            sub: `${najizSummary?.totalCases || 0} قضية إجمالاً`,
+            onClick: handleNajizClick,
+        },
+        {
+            id: 'najizCollected',
+            category: 'finance',
+            label: 'المحصّل من ناجز',
+            Icon: CheckCircle2,
+            color: 'var(--success)',
+            value: `${(parseFloat(metrics?.najizCollectedAmount) || 0).toLocaleString('en-US')} ﷼`,
+            sub: `${najizSummary?.paidCases || 0} قضية مكتملة`,
+        },
+        {
+            id: 'najizRemaining',
+            category: 'finance',
+            label: 'المتبقي في ناجز',
+            Icon: AlertTriangle,
+            color: 'var(--danger)',
+            value: `${(parseFloat(metrics?.najizRemainingAmount) || 0).toLocaleString('en-US')} ﷼`,
+            sub: `${najizSummary?.activeCases || 0} قضية نشطة`,
+            onClick: handleNajizClick,
+        },
+        {
+            id: 'overdueCustomers',
+            category: 'customers',
+            label: 'متأخرات (+30)',
+            Icon: AlertTriangle,
+            color: 'var(--danger)',
+            value: metrics?.overdueCustomers || 0,
+            sub: 'عملاء تجاوزوا 30 يوماً',
+            onClick: handleDelayedClick,
+        },
+        {
+            id: 'collectionRate',
+            category: 'finance',
+            label: 'نسبة التحصيل',
+            Icon: CheckCircle2,
+            color: 'var(--success)',
+            value: `${metrics?.collectionRate || 0}%`,
+            sub: 'من إجمالي قيمة القروض',
+            trend: ai.growthRate,
+        },
+    ]), [ai.growthRate, handleDelayedClick, handleNajizClick, metrics, najizSummary]);
+
+    const visibleStats = useMemo(
+        () => statCards.filter((card) => visibleCategories.includes(card.category)),
+        [statCards, visibleCategories]
+    );
 
     return (
         <>
             <ToastContainer toasts={toasts} />
 
             {/* Free Trial Banner */}
-            {merchant.subscriptionPlan?.toLowerCase() === 'enterprise' && merchant.expiryDate && (
+            {subscriptionPlan === 'enterprise' && merchant.expiryDate && (
                 <FreeTrialBanner expiryDate={merchant.expiryDate} />
             )}
 
@@ -344,7 +476,7 @@ export default function DashboardPage() {
                     <button className="btn btn-secondary" onClick={handleExportCSV}>
                         <Download size={16} /> تصدير CSV
                     </button>
-                    <button className="btn btn-primary" onClick={() => router.push('/dashboard/loans/new')}>
+                    <button className="btn btn-primary" onClick={handleNewLoanClick}>
                         <Plus size={16} /> إضافة قرض
                     </button>
                 </div>
@@ -354,39 +486,41 @@ export default function DashboardPage() {
             <OverdueMarquee clients={overdueClients} />
 
             {/* Stats Grid */}
+            <div className="stats-toolbar fade-up">
+                <div className="stats-toolbar-title">تصنيفات البطاقات</div>
+                <div className="stats-toggle-group">
+                    {STAT_CATEGORIES.map((category) => {
+                        const isActive = visibleCategories.includes(category.id);
+                        return (
+                            <button
+                                key={category.id}
+                                type="button"
+                                className={`stats-toggle ${isActive ? 'active' : ''}`}
+                                onClick={() => toggleCategory(category.id)}
+                                aria-pressed={isActive}
+                            >
+                                <category.Icon size={14} />
+                                {category.label}
+                            </button>
+                        );
+                    })}
+                    <button type="button" className="stats-toggle stats-toggle-muted" onClick={showAllCategories}>
+                        إظهار الكل
+                    </button>
+                </div>
+            </div>
+
             <div className="stats-grid">
-                <StatCard label="إجمالي الديون" Icon={DollarSign} color="var(--coral)"
-                    value={`${(parseFloat(metrics?.totalDebt) || 0).toLocaleString('en-US')} ﷼`}
-                    sub="إجمالي المحفظة النشطة" />
-                <StatCard label="إجمالي العملاء" Icon={Users} color="var(--info)"
-                    value={metrics?.totalCustomers || 0}
-                    sub={`${metrics?.activeCustomers || 0} لديهم قروض نشطة`} />
-                <StatCard label="قروض هذا الشهر" Icon={Calendar} color="var(--warning)"
-                    value={metrics?.loansThisMonth || 0}
-                    sub="تمت إضافتهم هذا الشهر" />
-                <StatCard label="قضايا ناجز" Icon={Shield} color="var(--warning)"
-                    value={metrics?.raisedCount || 0}
-                    sub="قضايا مرفوعة في ناجز"
-                    onClick={() => router.push('/dashboard/najiz')} />
-                <StatCard label="مبالغ ناجز المرفوعة" Icon={Shield} color="var(--info)"
-                    value={`${(parseFloat(metrics?.najizRaisedAmount) || 0).toLocaleString('en-US')} ﷼`}
-                    sub={`${najizSummary?.totalCases || 0} قضية إجمالاً`}
-                    onClick={() => router.push('/dashboard/najiz')} />
-                <StatCard label="المحصّل من ناجز" Icon={CheckCircle2} color="var(--success)"
-                    value={`${(parseFloat(metrics?.najizCollectedAmount) || 0).toLocaleString('en-US')} ﷼`}
-                    sub={`${najizSummary?.paidCases || 0} قضية مكتملة`} />
-                <StatCard label="المتبقي في ناجز" Icon={AlertTriangle} color="var(--danger)"
-                    value={`${(parseFloat(metrics?.najizRemainingAmount) || 0).toLocaleString('en-US')} ﷼`}
-                    sub={`${najizSummary?.activeCases || 0} قضية نشطة`}
-                    onClick={() => router.push('/dashboard/najiz')} />
-                <StatCard label="متأخرات (+30)" Icon={AlertTriangle} color="var(--danger)"
-                    value={metrics?.overdueCustomers || 0}
-                    sub="عملاء تجاوزوا 30 يوماً"
-                    onClick={() => router.push('/dashboard/loans?delayed=true')} />
-                <StatCard label="نسبة التحصيل" Icon={CheckCircle2} color="var(--success)"
-                    value={`${metrics?.collectionRate || 0}%`}
-                    sub="من إجمالي قيمة القروض"
-                    trend={ai.growthRate} />
+                {visibleStats.length === 0 ? (
+                    <div className="stats-empty">
+                        <ClipboardList size={20} color="var(--text-muted)" />
+                        <p>اختر تصنيفاً لعرض البطاقات</p>
+                    </div>
+                ) : (
+                    visibleStats.map((card) => (
+                        <StatCard key={card.id} {...card} />
+                    ))
+                )}
             </div>
 
             {/* Najiz Details */}
@@ -565,7 +699,7 @@ export default function DashboardPage() {
             </div>
 
             {/* AI Analysis Section */}
-            {merchant?.subscription_plan?.toLowerCase() !== 'enterprise' ? (
+            {subscriptionPlan !== 'enterprise' ? (
                 <div className="ai-section fade-up locked-tier-section">
                     <div className="locked-overlay">
                         <Shield size={32} color="var(--warning)" />
@@ -594,17 +728,17 @@ export default function DashboardPage() {
                     </div>
 
                     {/* AI Predictions */}
-                    {ai.aiPredictions && (
+                    {hasAiPredictions && (
                         <div className="ai-predictions-grid">
                             <div className="ai-prediction-card">
                                 <h4>ميزانية الشهر القادم المتوقعة</h4>
-                                <div className="ai-pred-value">{ai.aiPredictions.nextMonthBudget.toLocaleString('en-US')} ﷼</div>
+                                <div className="ai-pred-value">{nextMonthBudget?.toLocaleString('en-US')} ﷼</div>
                                 <p>خوارزمية الذكاء الاصطناعي بناءً على متوسط التحصيل والنمو.</p>
                             </div>
                             <div className="ai-prediction-card">
                                 <h4>استيعاب القروض عالية المخاطر</h4>
-                                <div className="ai-pred-value" style={{ color: ai.aiPredictions.highRiskCapacityPercent > 0 ? 'var(--success)' : 'var(--danger)' }}>
-                                    {ai.aiPredictions.highRiskCapacityPercent}%
+                                <div className="ai-pred-value" style={{ color: highRiskCapacityPercent && highRiskCapacityPercent > 0 ? 'var(--success)' : 'var(--danger)' }}>
+                                    {highRiskCapacityPercent}%
                                 </div>
                                 <p>الحد الآمن الموصى به لإقراض عملاء جدد بمخاطر عالية حالياً.</p>
                             </div>
