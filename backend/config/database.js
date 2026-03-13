@@ -8,7 +8,7 @@ const pool = new Pool({
     user: process.env.DB_USER || 'postgres',
     password: process.env.DB_PASSWORD,
     ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: false },
-    max: 20, // Prevents Postgres connection exhaustion on high loads
+    max: Number(process.env.DB_POOL_MAX || (process.env.VERCEL ? 5 : 20)),
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 10000,
 });
