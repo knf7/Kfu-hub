@@ -150,6 +150,26 @@ const LoansPage = () => {
         }
     };
 
+    const pageItems = useMemo(() => {
+        const items: Array<number | 'ellipsis'> = [];
+        if (pagination.totalPages <= 1) return items;
+        const current = pagination.page;
+        const start = Math.max(1, current - 2);
+        const end = Math.min(pagination.totalPages, current + 2);
+        if (start > 1) {
+            items.push(1);
+            if (start > 2) items.push('ellipsis');
+        }
+        for (let i = start; i <= end; i += 1) {
+            items.push(i);
+        }
+        if (end < pagination.totalPages) {
+            if (end < pagination.totalPages - 1) items.push('ellipsis');
+            items.push(pagination.totalPages);
+        }
+        return items;
+    }, [pagination.page, pagination.totalPages]);
+
     return (
         <div className="loans-page-container">
             <MoneyRain isRaining={showMoneyRain} onComplete={() => setShowMoneyRain(false)} />
@@ -382,13 +402,28 @@ const LoansPage = () => {
                     {pagination.totalPages > 1 && (
                         <div className="pagination">
                             <button
+                                className="btn btn-ghost"
                                 disabled={pagination.page === 1}
                                 onClick={() => setPagination({ ...pagination, page: pagination.page - 1 })}
                             >
                                 السابق
                             </button>
+                            {pageItems.map((item, idx) => (
+                                item === 'ellipsis'
+                                    ? <span key={`ellipsis-${idx}`} className="page-ellipsis">…</span>
+                                    : (
+                                        <button
+                                            key={item}
+                                            className={`btn btn-ghost page-number ${item === pagination.page ? 'active' : ''}`}
+                                            onClick={() => setPagination({ ...pagination, page: item })}
+                                        >
+                                            {item}
+                                        </button>
+                                    )
+                            ))}
                             <span>صفحة {pagination.page} من {pagination.totalPages}</span>
                             <button
+                                className="btn btn-ghost"
                                 disabled={pagination.page === pagination.totalPages}
                                 onClick={() => setPagination({ ...pagination, page: pagination.page + 1 })}
                             >

@@ -78,6 +78,24 @@ export default function CustomersPage() {
     const totalCustomers = customers.length;
     const customersWithDebt = customers.filter((c) => parseFloat(c.total_debt || 0) > 0).length;
     const clearCustomers = totalCustomers - customersWithDebt;
+    const pageItems = useMemo(() => {
+        const items: Array<number | 'ellipsis'> = [];
+        if (totalPages <= 1) return items;
+        const start = Math.max(1, page - 2);
+        const end = Math.min(totalPages, page + 2);
+        if (start > 1) {
+            items.push(1);
+            if (start > 2) items.push('ellipsis');
+        }
+        for (let i = start; i <= end; i += 1) {
+            items.push(i);
+        }
+        if (end < totalPages) {
+            if (end < totalPages - 1) items.push('ellipsis');
+            items.push(totalPages);
+        }
+        return items;
+    }, [page, totalPages]);
 
     return (
         <div className="customers-page-container">
@@ -275,6 +293,19 @@ export default function CustomersPage() {
                 {totalPages > 1 && (
                     <div className="pagination">
                         <button className="btn btn-ghost" disabled={page === 1} onClick={() => setPage((p: number) => p - 1)}>‹ السابق</button>
+                        {pageItems.map((item, idx) => (
+                            item === 'ellipsis'
+                                ? <span key={`ellipsis-${idx}`} className="page-ellipsis">…</span>
+                                : (
+                                    <button
+                                        key={item}
+                                        className={`btn btn-ghost page-number ${item === page ? 'active' : ''}`}
+                                        onClick={() => setPage(item)}
+                                    >
+                                        {item}
+                                    </button>
+                                )
+                        ))}
                         <span className="page-info">صفحة {page} من {totalPages}</span>
                         <button className="btn btn-ghost" disabled={page >= totalPages} onClick={() => setPage((p: number) => p + 1)}>التالي ›</button>
                     </div>
