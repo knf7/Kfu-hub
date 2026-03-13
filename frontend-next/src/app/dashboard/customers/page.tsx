@@ -17,8 +17,8 @@ export default function CustomersPage() {
     const [loading, setLoading] = useState(!initialCache);
     const [errorMsg, setErrorMsg] = useState('');
     const [search, setSearch] = useState('');
-    const [page, setPage] = useState(initialCache?.pagination?.page ?? 1);
-    const [totalPages, setTotalPages] = useState(initialCache?.pagination?.totalPages ?? 1);
+    const [page, setPage] = useState<number>(initialCache?.pagination?.page ?? 1);
+    const [totalPages, setTotalPages] = useState<number>(initialCache?.pagination?.totalPages ?? 1);
     const [showAdd, setShowAdd] = useState(false);
     const [editingCustomer, setEditingCustomer] = useState<any>(null);
     const [ratingCustomer, setRatingCustomer] = useState<any>(null);
@@ -260,9 +260,9 @@ export default function CustomersPage() {
 
                 {totalPages > 1 && (
                     <div className="pagination">
-                        <button className="btn btn-ghost" disabled={page === 1} onClick={() => setPage(p => p - 1)}>‹ السابق</button>
+                        <button className="btn btn-ghost" disabled={page === 1} onClick={() => setPage((p: number) => p - 1)}>‹ السابق</button>
                         <span className="page-info">صفحة {page} من {totalPages}</span>
-                        <button className="btn btn-ghost" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>التالي ›</button>
+                        <button className="btn btn-ghost" disabled={page >= totalPages} onClick={() => setPage((p: number) => p + 1)}>التالي ›</button>
                     </div>
                 )}
             </div>

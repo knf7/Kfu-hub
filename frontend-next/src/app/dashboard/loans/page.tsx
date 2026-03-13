@@ -27,11 +27,11 @@ const LoansPage = () => {
         endDate: '',
         delayed: false
     });
-    const [pagination, setPagination] = useState({
+    const [pagination, setPagination] = useState<{ page: number; limit: number; totalPages: number }>(() => ({
         page: initialCache?.pagination?.page ?? 1,
         limit: initialCache?.pagination?.limit ?? 20,
         totalPages: initialCache?.pagination?.totalPages ?? 1
-    });
+    }));
     const [showImportModal, setShowImportModal] = useState(false);
     const [editingLoan, setEditingLoan] = useState<any>(null);
     const [showMoneyRain, setShowMoneyRain] = useState(false);
