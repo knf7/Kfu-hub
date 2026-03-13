@@ -89,7 +89,17 @@ const clearDashboardCache = () => {
 };
 
 const getApiBaseUrl = () => {
-    if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL;
+    const envUrl = process.env.NEXT_PUBLIC_API_URL;
+    if (envUrl) {
+        if (typeof window !== 'undefined') {
+            const isLocalhostEnv = envUrl.includes('localhost') || envUrl.includes('127.0.0.1');
+            const isLocalhostBrowser = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+            if (isLocalhostEnv && !isLocalhostBrowser) {
+                return '/api';
+            }
+        }
+        return envUrl;
+    }
     if (typeof window !== 'undefined') return '/api';
     const backendOrigin = process.env.BACKEND_URL
         || (process.env.VERCEL ? 'https://aseel-backend.vercel.app' : 'http://localhost:3100');
