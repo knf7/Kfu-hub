@@ -36,6 +36,7 @@ const CHART_INTERVALS = [
     { id: 'year', label: 'سنوي' },
 ];
 
+const CACHE_TTL_MS = 1000 * 60 * 10;
 const DASHBOARD_SUMMARY_CACHE_KEY = 'dashboard-summary-cache';
 const DASHBOARD_AI_CACHE_KEY = 'dashboard-ai-cache';
 const readSession = (key: string) => {
@@ -46,6 +47,28 @@ const readSession = (key: string) => {
     } catch {
         return undefined;
     }
+};
+const readPersisted = (key: string) => {
+    if (typeof window === 'undefined') return undefined;
+    try {
+        const raw = localStorage.getItem(key);
+        if (!raw) return undefined;
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object') return undefined;
+        if (!parsed.savedAt || (Date.now() - parsed.savedAt) > CACHE_TTL_MS) {
+            localStorage.removeItem(key);
+            return undefined;
+        }
+        return parsed.data;
+    } catch {
+        return undefined;
+    }
+};
+const writePersisted = (key: string, data: any) => {
+    if (typeof window === 'undefined') return;
+    try {
+        localStorage.setItem(key, JSON.stringify({ data, savedAt: Date.now() }));
+    } catch { /* ignore */ }
 };
 
 const QUICK_ACTIONS = [
@@ -218,7 +241,7 @@ export default function DashboardPage() {
     const [merchant, setMerchant] = useState<any>({});
     const [visibleCategories, setVisibleCategories] = useState<string[]>(() => STAT_CATEGORIES.map((c) => c.id));
     const [todayLabel, setTodayLabel] = useState('');
-    const notifiedRef = useRef({ overdue: false, highRisk: false });
+    const notifiedRef = useRef({ overdue: false, highRisk: false, summaryError: false });
 
     const addToast = useCallback((toast: any) => {
         const id = Date.now() + Math.random();
@@ -233,7 +256,7 @@ export default function DashboardPage() {
         gcTime: 1000 * 60 * 30,
         retry: 1,
         refetchOnWindowFocus: false,
-        initialData: () => readSession(DASHBOARD_SUMMARY_CACHE_KEY),
+        initialData: () => readSession(DASHBOARD_SUMMARY_CACHE_KEY) ?? readPersisted(DASHBOARD_SUMMARY_CACHE_KEY),
     });
 
     const analyticsQuery = useQuery({
@@ -244,7 +267,9 @@ export default function DashboardPage() {
         retry: 1,
         refetchOnWindowFocus: false,
         placeholderData: (prev) => prev,
-        initialData: () => readSession(`dashboard-analytics-${chartInterval}`),
+        initialData: () =>
+            readSession(`dashboard-analytics-${chartInterval}`)
+            ?? readPersisted(`dashboard-analytics-${chartInterval}`),
     });
 
     const aiQuery = useQuery({
@@ -254,7 +279,7 @@ export default function DashboardPage() {
         gcTime: 1000 * 60 * 30,
         retry: false,
         refetchOnWindowFocus: false,
-        initialData: () => readSession(DASHBOARD_AI_CACHE_KEY),
+        initialData: () => readSession(DASHBOARD_AI_CACHE_KEY) ?? readPersisted(DASHBOARD_AI_CACHE_KEY),
     });
 
     useEffect(() => {
@@ -262,6 +287,7 @@ export default function DashboardPage() {
         try {
             sessionStorage.setItem(DASHBOARD_SUMMARY_CACHE_KEY, JSON.stringify(summaryQuery.data));
         } catch { /* ignore */ }
+        writePersisted(DASHBOARD_SUMMARY_CACHE_KEY, summaryQuery.data);
     }, [summaryQuery.data]);
 
     useEffect(() => {
@@ -272,6 +298,7 @@ export default function DashboardPage() {
                 JSON.stringify(analyticsQuery.data)
             );
         } catch { /* ignore */ }
+        writePersisted(`dashboard-analytics-${chartInterval}`, analyticsQuery.data);
     }, [analyticsQuery.data, chartInterval]);
 
     useEffect(() => {
@@ -279,6 +306,7 @@ export default function DashboardPage() {
         try {
             sessionStorage.setItem(DASHBOARD_AI_CACHE_KEY, JSON.stringify(aiQuery.data));
         } catch { /* ignore */ }
+        writePersisted(DASHBOARD_AI_CACHE_KEY, aiQuery.data);
     }, [aiQuery.data]);
 
     useEffect(() => {
@@ -393,6 +421,7 @@ export default function DashboardPage() {
     }, [merchant]);
 
     const isInitialLoading = summaryQuery.isLoading && !summaryQuery.data;
+    const hasCachedSummary = Boolean(summaryQuery.data);
 
     useEffect(() => {
         const highRisk = ai?.riskSegmentation?.highRisk || 0;
@@ -404,7 +433,11 @@ export default function DashboardPage() {
             addToast({ type: 'danger', title: 'تنبيه مخاطر عالية', text: `${highRisk} عميل تجاوز 90 يوماً — إجراء عاجل مطلوب` });
             notifiedRef.current.highRisk = true;
         }
-    }, [addToast, ai, overdueClients]);
+        if (summaryQuery.isError && hasCachedSummary && !notifiedRef.current.summaryError) {
+            addToast({ type: 'info', title: 'تم عرض آخر بيانات محفوظة', text: 'تعذر تحديث البيانات حالياً.' });
+            notifiedRef.current.summaryError = true;
+        }
+    }, [addToast, ai, overdueClients, summaryQuery.isError, hasCachedSummary]);
 
     const handleNajizClick = useCallback(() => router.push('/dashboard/najiz'), [router]);
     const handleDelayedClick = useCallback(() => router.push('/dashboard/loans?delayed=true'), [router]);
@@ -503,15 +536,6 @@ export default function DashboardPage() {
         () => statCards.filter((card) => visibleCategories.includes(card.category)),
         [statCards, visibleCategories]
     );
-
-    if (summaryQuery.isError && !summaryQuery.data) {
-        return (
-            <div className="db-loading">
-                <div className="db-spinner" />
-                <p>تعذر تحميل البيانات حالياً. جرّب إعادة التحديث.</p>
-            </div>
-        );
-    }
 
     if (isInitialLoading) {
         return (
