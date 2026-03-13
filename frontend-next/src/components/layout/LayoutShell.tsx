@@ -251,7 +251,7 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
       }
     };
 
-    runMonthEndNotice();
+    return scheduleIdle(runMonthEndNotice);
   }, [currentUser.role]);
 
   const handleLogout = useCallback(() => {

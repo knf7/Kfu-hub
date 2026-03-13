@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useDeferredValue, useTransition } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { loansAPI, customersAPI } from '@/lib/api';
 import { toast } from 'sonner';
@@ -27,6 +27,8 @@ const LoansPage = () => {
         endDate: '',
         delayed: false
     });
+    const deferredFilters = useDeferredValue(filters);
+    const [, startTransition] = useTransition();
     const [pagination, setPagination] = useState<{ page: number; limit: number; totalPages: number }>(() => ({
         page: initialCache?.pagination?.page ?? 1,
         limit: initialCache?.pagination?.limit ?? 20,
@@ -53,7 +55,7 @@ const LoansPage = () => {
         try {
             const requestPage = pageOverride ?? pagination.page;
             const params = {
-                ...filters,
+                ...deferredFilters,
                 page: requestPage,
                 limit: pagination.limit
             };
@@ -82,7 +84,7 @@ const LoansPage = () => {
         } finally {
             setLoading(false);
         }
-    }, [filters, pagination.limit, pagination.page, loans.length]);
+    }, [deferredFilters, pagination.limit, pagination.page, loans.length]);
 
     useEffect(() => {
         fetchLoans();
@@ -164,13 +166,19 @@ const LoansPage = () => {
                     type="text"
                     placeholder="بحث بالاسم أو رقم الهوية..."
                     value={filters.search}
-                    onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+                    onChange={(e) => {
+                        const next = e.target.value;
+                        startTransition(() => setFilters({ ...filters, search: next }));
+                    }}
                     className="search-input"
                 />
 
                 <select
                     value={filters.status}
-                    onChange={(e) => setFilters({ ...filters, status: e.target.value })}
+                    onChange={(e) => {
+                        const next = e.target.value;
+                        startTransition(() => setFilters({ ...filters, status: next }));
+                    }}
                     className="filter-select"
                 >
                     <option value="">كل الحالات</option>
@@ -183,20 +191,26 @@ const LoansPage = () => {
                 <input
                     type="date"
                     value={filters.startDate}
-                    onChange={(e) => setFilters({ ...filters, startDate: e.target.value })}
+                    onChange={(e) => {
+                        const next = e.target.value;
+                        startTransition(() => setFilters({ ...filters, startDate: next }));
+                    }}
                     className="date-input"
                 />
 
                 <input
                     type="date"
                     value={filters.endDate}
-                    onChange={(e) => setFilters({ ...filters, endDate: e.target.value })}
+                    onChange={(e) => {
+                        const next = e.target.value;
+                        startTransition(() => setFilters({ ...filters, endDate: next }));
+                    }}
                     className="date-input"
                 />
 
                 <button
                     className="btn-clear"
-                    onClick={() => setFilters({ search: '', status: '', startDate: '', endDate: '', delayed: false })}
+                    onClick={() => startTransition(() => setFilters({ search: '', status: '', startDate: '', endDate: '', delayed: false }))}
                 >
                     مسح الفلاتر
                 </button>

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useDeferredValue, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { customersAPI } from '@/lib/api';
 import { toast } from 'sonner';
@@ -17,6 +17,8 @@ export default function CustomersPage() {
     const [loading, setLoading] = useState(!initialCache);
     const [errorMsg, setErrorMsg] = useState('');
     const [search, setSearch] = useState('');
+    const deferredSearch = useDeferredValue(search);
+    const [, startTransition] = useTransition();
     const [page, setPage] = useState<number>(initialCache?.pagination?.page ?? 1);
     const [totalPages, setTotalPages] = useState<number>(initialCache?.pagination?.totalPages ?? 1);
     const [showAdd, setShowAdd] = useState(false);
@@ -25,7 +27,7 @@ export default function CustomersPage() {
 
     const fetchCustomers = useCallback(async (pageOverride?: number) => {
         const requestPage = pageOverride ?? page;
-        const params = { page: requestPage, limit: 15, search: search || undefined };
+        const params = { page: requestPage, limit: 15, search: deferredSearch || undefined };
         const cached = customersAPI.peekAll(params);
         if (cached) {
             setCustomers(cached.customers || []);
@@ -48,7 +50,7 @@ export default function CustomersPage() {
             setErrorMsg('تعذر الاتصال بالخادم. تأكد أن خدمة الـ API تعمل على المنفذ 3100.');
         }
         finally { setLoading(false); }
-    }, [page, search, customers.length]);
+    }, [page, deferredSearch, customers.length]);
 
     useEffect(() => { fetchCustomers(); }, [fetchCustomers]);
 
@@ -77,7 +79,6 @@ export default function CustomersPage() {
                     onSaved={async () => {
                         setShowAdd(false);
                         await fetchCustomers(1);
-                        router.refresh();
                         toast.success('تم إضافة العميل وتحديث القائمة');
                     }}
                 />
@@ -90,7 +91,6 @@ export default function CustomersPage() {
                     onSaved={async () => {
                         setEditingCustomer(null);
                         await fetchCustomers();
-                        router.refresh();
                         toast.success('تم تحديث بيانات العميل');
                     }}
                 />
@@ -126,7 +126,13 @@ export default function CustomersPage() {
                         className="search-field"
                         placeholder="ابحث بالاسم أو رقم الهوية أو الجوال..."
                         value={search}
-                        onChange={e => { setSearch(e.target.value); setPage(1); }}
+                        onChange={e => {
+                            const nextValue = e.target.value;
+                            startTransition(() => {
+                                setSearch(nextValue);
+                                setPage(1);
+                            });
+                        }}
                     />
                 </div>
             </div>

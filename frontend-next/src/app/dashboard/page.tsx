@@ -244,6 +244,7 @@ export default function DashboardPage() {
     const [todayLabel, setTodayLabel] = useState('');
     const notifiedRef = useRef({ overdue: false, highRisk: false, summaryError: false });
     const [enableHeavyFetch, setEnableHeavyFetch] = useState(false);
+    const [refreshToken, setRefreshToken] = useState(0);
 
     const subscriptionPlan = String(merchant?.subscriptionPlan || merchant?.subscription_plan || '').toLowerCase();
     const initialSummary = useMemo(
@@ -268,9 +269,9 @@ export default function DashboardPage() {
     }, []);
 
     const summaryQuery = useQuery({
-        queryKey: ['dashboard', 'summary'],
+        queryKey: ['dashboard', 'summary', refreshToken],
         queryFn: async () => {
-            const res = await reportsAPI.getDashboard({});
+            const res = await reportsAPI.getDashboard(refreshToken ? { _t: refreshToken } : {});
             return (res as any).data ?? res;
         },
         staleTime: 1000 * 60 * 5,
@@ -281,9 +282,9 @@ export default function DashboardPage() {
     });
 
     const analyticsQuery = useQuery({
-        queryKey: ['dashboard', 'analytics', chartInterval],
+        queryKey: ['dashboard', 'analytics', chartInterval, refreshToken],
         queryFn: async () => {
-            const res = await reportsAPI.getAnalytics({ interval: chartInterval });
+            const res = await reportsAPI.getAnalytics({ interval: chartInterval, _t: refreshToken || undefined });
             return (res as any).data ?? res;
         },
         enabled: enableHeavyFetch,
@@ -296,9 +297,9 @@ export default function DashboardPage() {
     });
 
     const aiQuery = useQuery({
-        queryKey: ['dashboard', 'ai'],
+        queryKey: ['dashboard', 'ai', refreshToken],
         queryFn: async () => {
-            const res = await reportsAPI.getAIAnalysis({});
+            const res = await reportsAPI.getAIAnalysis(refreshToken ? { _t: refreshToken } : {});
             return (res as any).data ?? res;
         },
         enabled: enableHeavyFetch && subscriptionPlan === 'enterprise',
@@ -370,6 +371,7 @@ export default function DashboardPage() {
             const dirty = localStorage.getItem(DASHBOARD_DIRTY_KEY);
             if (!dirty) return;
             localStorage.removeItem(DASHBOARD_DIRTY_KEY);
+            setRefreshToken(Date.now());
             queryClient.invalidateQueries({ queryKey: ['dashboard'] });
             setEnableHeavyFetch(true);
             summaryQuery.refetch();
