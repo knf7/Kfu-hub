@@ -91,14 +91,17 @@ const clearDashboardCache = () => {
 const getApiBaseUrl = () => {
     const envUrl = process.env.NEXT_PUBLIC_API_URL;
     if (envUrl) {
+        const normalizedEnv = envUrl.replace(/\/$/, '');
+        const hasApiSegment = /\/api(\/|$)/.test(normalizedEnv);
+        const resolvedEnv = hasApiSegment ? normalizedEnv : `${normalizedEnv}/api`;
         if (typeof window !== 'undefined') {
-            const isLocalhostEnv = envUrl.includes('localhost') || envUrl.includes('127.0.0.1');
+            const isLocalhostEnv = resolvedEnv.includes('localhost') || resolvedEnv.includes('127.0.0.1');
             const isLocalhostBrowser = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
             if (isLocalhostEnv && !isLocalhostBrowser) {
                 return '/api';
             }
         }
-        return envUrl;
+        return resolvedEnv;
     }
     if (typeof window !== 'undefined') return '/api';
     const backendOrigin = process.env.BACKEND_URL
