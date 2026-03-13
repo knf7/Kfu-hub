@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
 import {
     AreaChart, Area, PieChart, Pie, Cell,
     XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
@@ -9,7 +10,7 @@ import {
 import api from '@/lib/api';
 import {
     DollarSign, Users, Calendar, CheckCircle2, AlertTriangle,
-    TrendingUp, TrendingDown, Download, Plus, Rocket, Activity,
+    TrendingUp, TrendingDown, Download, Plus, Rocket,
     Shield, User, AlertCircle, Info, ClipboardList, PieChart as PieChartIcon,
     CreditCard, Upload, BarChart3
 } from 'lucide-react';
@@ -37,14 +38,15 @@ const CHART_INTERVALS = [
 
 const DASHBOARD_SUMMARY_CACHE_KEY = 'dashboard-summary-cache';
 const DASHBOARD_AI_CACHE_KEY = 'dashboard-ai-cache';
-
-let dashboardSummaryCache: {
-    metrics: any;
-    najizSummary: any;
-    najizDetails: any[];
-} | null = null;
-let dashboardAiCache: any | null = null;
-const analyticsCache: Record<string, { debtTrend: any[]; statusDist: any[] }> = {};
+const readSession = (key: string) => {
+    if (typeof window === 'undefined') return undefined;
+    try {
+        const raw = sessionStorage.getItem(key);
+        return raw ? JSON.parse(raw) : undefined;
+    } catch {
+        return undefined;
+    }
+};
 
 const QUICK_ACTIONS = [
     { Icon: Plus, label: 'إضافة قرض جديد', sub: 'تسجيل عميل وقرض', path: '/dashboard/loans/new', color: 'var(--coral)' },
@@ -211,18 +213,12 @@ const FreeTrialBanner = React.memo(function FreeTrialBanner({ expiryDate }: { ex
 // ─── Main Dashboard ────────────────────────────
 export default function DashboardPage() {
     const router = useRouter();
-    const [metrics, setMetrics] = useState<any>(null);
-    const [najizSummary, setNajizSummary] = useState<any>(null);
-    const [najizDetails, setNajizDetails] = useState<any[]>([]);
-    const [debtTrend, setDebtTrend] = useState<any[]>([]);
-    const [statusDist, setStatusDist] = useState<any[]>([]);
-    const [aiData, setAiData] = useState<any>(null);
     const [chartInterval, setChartInterval] = useState('week');
-    const [loading, setLoading] = useState(true);
     const [toasts, setToasts] = useState<any[]>([]);
     const [merchant, setMerchant] = useState<any>({});
     const [visibleCategories, setVisibleCategories] = useState<string[]>(() => STAT_CATEGORIES.map((c) => c.id));
     const [todayLabel, setTodayLabel] = useState('');
+    const notifiedRef = useRef({ overdue: false, highRisk: false });
 
     const addToast = useCallback((toast: any) => {
         const id = Date.now() + Math.random();
@@ -230,54 +226,66 @@ export default function DashboardPage() {
         setTimeout(() => setToasts((prev: any[]) => prev.filter((t: any) => t.id !== id)), 6000);
     }, []);
 
+    const summaryQuery = useQuery({
+        queryKey: ['dashboard', 'summary'],
+        queryFn: async () => (await api.get('/reports/dashboard')).data,
+        staleTime: 1000 * 60 * 5,
+        gcTime: 1000 * 60 * 30,
+        retry: 1,
+        refetchOnWindowFocus: false,
+        initialData: () => readSession(DASHBOARD_SUMMARY_CACHE_KEY),
+    });
+
+    const analyticsQuery = useQuery({
+        queryKey: ['dashboard', 'analytics', chartInterval],
+        queryFn: async () => (await api.get(`/reports/analytics?interval=${chartInterval}`)).data,
+        staleTime: 1000 * 60 * 5,
+        gcTime: 1000 * 60 * 30,
+        retry: 1,
+        refetchOnWindowFocus: false,
+        placeholderData: (prev) => prev,
+        initialData: () => readSession(`dashboard-analytics-${chartInterval}`),
+    });
+
+    const aiQuery = useQuery({
+        queryKey: ['dashboard', 'ai'],
+        queryFn: async () => (await api.get('/reports/ai-analysis')).data,
+        staleTime: 1000 * 60 * 5,
+        gcTime: 1000 * 60 * 30,
+        retry: false,
+        refetchOnWindowFocus: false,
+        initialData: () => readSession(DASHBOARD_AI_CACHE_KEY),
+    });
+
     useEffect(() => {
-        const applySummaryCache = (cache: { metrics: any; najizSummary: any; najizDetails: any[] }) => {
-            setMetrics(cache.metrics ?? null);
-            setNajizSummary(cache.najizSummary ?? null);
-            setNajizDetails(cache.najizDetails ?? []);
-            setLoading(false);
-        };
+        if (!summaryQuery.data) return;
+        try {
+            sessionStorage.setItem(DASHBOARD_SUMMARY_CACHE_KEY, JSON.stringify(summaryQuery.data));
+        } catch { /* ignore */ }
+    }, [summaryQuery.data]);
 
-        if (dashboardSummaryCache) {
-            applySummaryCache(dashboardSummaryCache);
-        } else {
-            try {
-                const cached = sessionStorage.getItem(DASHBOARD_SUMMARY_CACHE_KEY);
-                if (cached) applySummaryCache(JSON.parse(cached));
-            } catch { /* ignore */ }
-        }
+    useEffect(() => {
+        if (!analyticsQuery.data) return;
+        try {
+            sessionStorage.setItem(
+                `dashboard-analytics-${chartInterval}`,
+                JSON.stringify(analyticsQuery.data)
+            );
+        } catch { /* ignore */ }
+    }, [analyticsQuery.data, chartInterval]);
 
-        if (dashboardAiCache) {
-            setAiData(dashboardAiCache);
-        } else {
-            try {
-                const cachedAi = sessionStorage.getItem(DASHBOARD_AI_CACHE_KEY);
-                if (cachedAi) setAiData(JSON.parse(cachedAi));
-            } catch { /* ignore */ }
-        }
-    }, []);
+    useEffect(() => {
+        if (aiQuery.data === undefined) return;
+        try {
+            sessionStorage.setItem(DASHBOARD_AI_CACHE_KEY, JSON.stringify(aiQuery.data));
+        } catch { /* ignore */ }
+    }, [aiQuery.data]);
 
     useEffect(() => {
         setTodayLabel(
             new Date().toLocaleDateString('ar-SA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
         );
     }, []);
-
-    useEffect(() => {
-        if (analyticsCache[chartInterval]) {
-            setDebtTrend(analyticsCache[chartInterval].debtTrend || []);
-            setStatusDist(analyticsCache[chartInterval].statusDist || []);
-            return;
-        }
-        try {
-            const cached = sessionStorage.getItem(`dashboard-analytics-${chartInterval}`);
-            if (cached) {
-                const parsed = JSON.parse(cached);
-                setDebtTrend(parsed.debtTrend || []);
-                setStatusDist(parsed.statusDist || []);
-            }
-        } catch { /* ignore */ }
-    }, [chartInterval]);
 
     const toggleCategory = useCallback((id: string) => {
         setVisibleCategories((prev) => (
@@ -288,86 +296,6 @@ export default function DashboardPage() {
     const showAllCategories = useCallback(() => {
         setVisibleCategories(STAT_CATEGORIES.map((c) => c.id));
     }, []);
-
-    const fetchDashboard = useCallback(async () => {
-        try {
-            const [dashRes, analyticsRes, aiRes] = await Promise.all([
-                api.get('/reports/dashboard').catch(() => ({ data: {} })),
-                api.get(`/reports/analytics?interval=${chartInterval}`).catch(() => ({ data: {} })),
-                api.get('/reports/ai-analysis').catch(() => ({ data: null }))
-            ]);
-
-            // Metrics
-            const m = dashRes.data?.metrics || {};
-            setMetrics(m);
-            setNajizSummary(dashRes.data?.najizSummary || null);
-            setNajizDetails(dashRes.data?.najizDetails || []);
-            dashboardSummaryCache = {
-                metrics: m,
-                najizSummary: dashRes.data?.najizSummary || null,
-                najizDetails: dashRes.data?.najizDetails || [],
-            };
-            try {
-                sessionStorage.setItem(DASHBOARD_SUMMARY_CACHE_KEY, JSON.stringify(dashboardSummaryCache));
-            } catch { /* ignore */ }
-
-            // Debt trend
-            const analytics = analyticsRes.data || {};
-            const trend = (analytics.debtTrend || []).map((r: any) => {
-                let name = r.month;
-                if (chartInterval === 'week') {
-                    const [mm, d] = (r.month || '').split('-');
-                    name = `${d}/${mm}`;
-                } else if (chartInterval === 'month') {
-                    const [, w] = (r.month || '').split('-');
-                    name = `أسبوع ${w}`;
-                } else if (chartInterval === '6months' || chartInterval === 'year') {
-                    name = MONTH_NAMES[r.month?.slice(5, 7)] || r.month || '';
-                }
-                return { month: name, amount: parseFloat(r.total) || 0, count: parseInt(r.loan_count) || 0 };
-            });
-            setDebtTrend(trend);
-
-            // Status distribution
-            const dist = (analytics.statusDistribution || []).map((r: any) => ({
-                ...r,
-                label: STATUS_MAP[r.status]?.label || r.status,
-                color: STATUS_MAP[r.status]?.color || 'var(--text-muted)',
-                count: parseInt(r.count, 10) || 0
-            }));
-            setStatusDist(dist);
-            analyticsCache[chartInterval] = { debtTrend: trend, statusDist: dist };
-            try {
-                sessionStorage.setItem(
-                    `dashboard-analytics-${chartInterval}`,
-                    JSON.stringify(analyticsCache[chartInterval])
-                );
-            } catch { /* ignore */ }
-
-            // AI
-            dashboardAiCache = aiRes.data || null;
-            if (aiRes.data) setAiData(aiRes.data);
-            try {
-                sessionStorage.setItem(DASHBOARD_AI_CACHE_KEY, JSON.stringify(aiRes.data || null));
-            } catch { /* ignore */ }
-
-            // Overdue notifications
-            const overdueClients = aiRes.data?.overdueClients || [];
-            if (overdueClients.length > 0) {
-                addToast({ type: 'warning', title: 'عملاء متأخرون', text: `${overdueClients.length} عميل لم يسددوا منذ +30 يوم` });
-            }
-            const risk = aiRes.data?.summary?.riskSegmentation;
-            if (risk?.highRisk > 0) {
-                addToast({ type: 'danger', title: 'تنبيه مخاطر عالية', text: `${risk.highRisk} عميل تجاوز 90 يوماً — إجراء عاجل مطلوب` });
-            }
-        } catch (err) {
-            console.error('Dashboard fetch error:', err);
-        } finally {
-            setLoading(false);
-        }
-    }, [addToast, chartInterval]);
-
-    useEffect(() => { fetchDashboard(); }, [fetchDashboard]);
 
     useEffect(() => {
         try {
@@ -400,8 +328,41 @@ export default function DashboardPage() {
         }
     };
 
+    const summary = summaryQuery.data ?? {};
+    const metrics = summary?.metrics ?? {};
+    const najizSummary = summary?.najizSummary ?? null;
+    const najizDetails = summary?.najizDetails ?? [];
+
+    const analytics = analyticsQuery.data ?? {};
+    const debtTrend = useMemo(() => {
+        return (analytics.debtTrend || []).map((r: any) => {
+            let name = r.month;
+            if (chartInterval === 'week') {
+                const [mm, d] = (r.month || '').split('-');
+                name = `${d}/${mm}`;
+            } else if (chartInterval === 'month') {
+                const [, w] = (r.month || '').split('-');
+                name = `أسبوع ${w}`;
+            } else if (chartInterval === '6months' || chartInterval === 'year') {
+                name = MONTH_NAMES[r.month?.slice(5, 7)] || r.month || '';
+            }
+            return { month: name, amount: parseFloat(r.total) || 0, count: parseInt(r.loan_count) || 0 };
+        });
+    }, [analytics, chartInterval]);
+
+    const statusDist = useMemo(() => (
+        (analytics.statusDistribution || []).map((r: any) => ({
+            ...r,
+            label: STATUS_MAP[r.status]?.label || r.status,
+            color: STATUS_MAP[r.status]?.color || 'var(--text-muted)',
+            count: parseInt(r.count, 10) || 0
+        }))
+    ), [analytics]);
+
     const pieData = useMemo(() => statusDist.filter((d: any) => d.count > 0), [statusDist]);
     const hasCharts = useMemo(() => debtTrend.length > 0 || pieData.length > 0, [debtTrend, pieData]);
+
+    const aiData = aiQuery.data ?? null;
     const ai = useMemo(() => aiData?.summary || {}, [aiData]);
     const aiPredictions = useMemo(
         () => aiData?.aiPredictions ?? (ai as any)?.aiPredictions ?? null,
@@ -430,6 +391,20 @@ export default function DashboardPage() {
         const plan = merchant?.subscriptionPlan || merchant?.subscription_plan || '';
         return String(plan).toLowerCase();
     }, [merchant]);
+
+    const isInitialLoading = summaryQuery.isLoading && !summaryQuery.data;
+
+    useEffect(() => {
+        const highRisk = ai?.riskSegmentation?.highRisk || 0;
+        if (overdueClients.length > 0 && !notifiedRef.current.overdue) {
+            addToast({ type: 'warning', title: 'عملاء متأخرون', text: `${overdueClients.length} عميل لم يسددوا منذ +30 يوم` });
+            notifiedRef.current.overdue = true;
+        }
+        if (highRisk > 0 && !notifiedRef.current.highRisk) {
+            addToast({ type: 'danger', title: 'تنبيه مخاطر عالية', text: `${highRisk} عميل تجاوز 90 يوماً — إجراء عاجل مطلوب` });
+            notifiedRef.current.highRisk = true;
+        }
+    }, [addToast, ai, overdueClients]);
 
     const handleNajizClick = useCallback(() => router.push('/dashboard/najiz'), [router]);
     const handleDelayedClick = useCallback(() => router.push('/dashboard/loans?delayed=true'), [router]);
@@ -529,7 +504,16 @@ export default function DashboardPage() {
         [statCards, visibleCategories]
     );
 
-    if (loading) {
+    if (summaryQuery.isError && !summaryQuery.data) {
+        return (
+            <div className="db-loading">
+                <div className="db-spinner" />
+                <p>تعذر تحميل البيانات حالياً. جرّب إعادة التحديث.</p>
+            </div>
+        );
+    }
+
+    if (isInitialLoading) {
         return (
             <div className="db-loading">
                 <div className="db-spinner" />
