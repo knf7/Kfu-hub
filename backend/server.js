@@ -60,6 +60,30 @@ const { redis } = require('./config/redis');
 const db = require('./config/database');
 const { createObservability } = require('./middleware/observability');
 
+// ── Schema Guard (idempotent, best-effort) ────────────────────────
+let coreSchemaEnsured = false;
+let coreSchemaEnsuring = null;
+const ensureCoreSchema = async () => {
+    if (coreSchemaEnsured) return;
+    if (coreSchemaEnsuring) return coreSchemaEnsuring;
+    coreSchemaEnsuring = (async () => {
+        try {
+            await db.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP NULL`);
+            await db.query(`ALTER TABLE loans ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP NULL`);
+            await db.query(`ALTER TABLE merchant_employees ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP NULL`);
+            coreSchemaEnsured = true;
+        } catch (err) {
+            console.warn('Schema guard skipped:', err?.message || err);
+        } finally {
+            coreSchemaEnsuring = null;
+        }
+    })();
+    return coreSchemaEnsuring;
+};
+
+// Run once on boot (best-effort). For serverless, this runs per cold start.
+ensureCoreSchema();
+
 validateEnv();
 const isProd = (process.env.NODE_ENV || 'development') === 'production';
 const warnIfMissing = (key, message) => {
