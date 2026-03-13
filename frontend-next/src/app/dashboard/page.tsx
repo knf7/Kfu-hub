@@ -115,10 +115,7 @@ const ToastContainer = React.memo(function ToastContainer({ toasts }: { toasts: 
 // ─── Overdue Marquee ──────────────────────────
 const OverdueMarquee = React.memo(function OverdueMarquee({ clients }: { clients: any[] }) {
     const safeClients = Array.isArray(clients) ? clients : [];
-    const full = useMemo(
-        () => (safeClients.length > 0 ? [...safeClients, ...safeClients] : []),
-        [safeClients]
-    );
+    const full = safeClients.length > 0 ? [...safeClients, ...safeClients] : [];
     if (full.length === 0) return null;
     return (
         <div className="overdue-marquee-wrap fade-up">
@@ -225,6 +222,7 @@ export default function DashboardPage() {
     const [toasts, setToasts] = useState<any[]>([]);
     const [merchant, setMerchant] = useState<any>({});
     const [visibleCategories, setVisibleCategories] = useState<string[]>(() => STAT_CATEGORIES.map((c) => c.id));
+    const [todayLabel, setTodayLabel] = useState('');
 
     const addToast = useCallback((toast: any) => {
         const id = Date.now() + Math.random();
@@ -257,6 +255,12 @@ export default function DashboardPage() {
                 if (cachedAi) setAiData(JSON.parse(cachedAi));
             } catch { /* ignore */ }
         }
+    }, []);
+
+    useEffect(() => {
+        setTodayLabel(
+            new Date().toLocaleDateString('ar-SA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+        );
     }, []);
 
     useEffect(() => {
@@ -548,7 +552,7 @@ export default function DashboardPage() {
                 <div>
                     <h1 className="db-title">لوحة التحكم</h1>
                     <p className="db-subtitle">
-                        {new Date().toLocaleDateString('ar-SA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                        {todayLabel}
                         {merchant.store_name && <span className="db-store"> · {merchant.store_name}</span>}
                     </p>
                 </div>
