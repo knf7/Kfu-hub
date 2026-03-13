@@ -344,20 +344,21 @@ export default function DashboardPage() {
     useEffect(() => {
         if (enableHeavyFetch) return;
         if (typeof window === 'undefined') return;
+        const globalAny = globalThis as any;
         let idleHandle: number | null = null;
-        let timeoutHandle: number | null = null;
+        let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
         const trigger = () => setEnableHeavyFetch(true);
-        if ('requestIdleCallback' in window) {
-            idleHandle = (window as any).requestIdleCallback(trigger, { timeout: 1200 });
+        if (typeof globalAny.requestIdleCallback === 'function') {
+            idleHandle = globalAny.requestIdleCallback(trigger, { timeout: 1200 });
         } else {
-            timeoutHandle = window.setTimeout(trigger, 400);
+            timeoutHandle = setTimeout(trigger, 400);
         }
         return () => {
-            if (idleHandle !== null && 'cancelIdleCallback' in window) {
-                (window as any).cancelIdleCallback(idleHandle);
+            if (idleHandle !== null && typeof globalAny.cancelIdleCallback === 'function') {
+                globalAny.cancelIdleCallback(idleHandle);
             }
             if (timeoutHandle !== null) {
-                window.clearTimeout(timeoutHandle);
+                clearTimeout(timeoutHandle);
             }
         };
     }, [enableHeavyFetch]);
