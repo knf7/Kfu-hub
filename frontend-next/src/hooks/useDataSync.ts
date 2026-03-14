@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { DataSyncEvent, subscribeDataSync } from '@/lib/api';
+import { DataSyncEvent, invalidateCacheForScopes, subscribeDataSync } from '@/lib/api';
 
 type Options = {
     scopes?: string[];
@@ -23,6 +23,9 @@ export const useDataSync = (handler: (event: DataSyncEvent) => void, options: Op
         const debounceMs = options.debounceMs ?? 200;
         const unsubscribe = subscribeDataSync((event) => {
             if (!matchesScope(event, options.scopes)) return;
+            if (event?.scopes?.length) {
+                invalidateCacheForScopes(event.scopes);
+            }
             if (debounceMs <= 0) {
                 handlerRef.current(event);
                 return;

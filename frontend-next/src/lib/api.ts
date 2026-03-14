@@ -144,7 +144,27 @@ const clearCacheByPrefix = (urlPrefix: string) => {
     } catch { /* ignore */ }
 };
 
-const clearDashboardCache = () => {
+export const invalidateCacheForScopes = (scopes: string[]) => {
+    const scopeSet = new Set(scopes || []);
+    if (scopeSet.has('customers')) {
+        clearCacheByPrefix('/customers');
+    }
+    if (scopeSet.has('loans')) {
+        clearCacheByPrefix('/loans');
+    }
+    if (scopeSet.has('reports') || scopeSet.has('dashboard') || scopeSet.has('analytics')) {
+        clearCacheByPrefix('/reports');
+        clearDashboardCache(false);
+    }
+    if (scopeSet.has('najiz')) {
+        clearCacheByPrefix('/najiz');
+    }
+    if (scopeSet.has('employees')) {
+        clearCacheByPrefix('/employees');
+    }
+};
+
+const clearDashboardCache = (emitSync = true) => {
     if (typeof window === 'undefined') return;
     const clearStore = (storage: Storage) => {
         Object.keys(storage).forEach((key) => {
@@ -157,7 +177,9 @@ const clearDashboardCache = () => {
         clearStore(sessionStorage);
         clearStore(localStorage);
         localStorage.setItem(DASHBOARD_DIRTY_KEY, String(Date.now()));
-        emitDataSync({ scopes: ['dashboard', 'reports'], reason: 'dashboard-cache-cleared' });
+        if (emitSync) {
+            emitDataSync({ scopes: ['dashboard', 'reports'], reason: 'dashboard-cache-cleared' });
+        }
     } catch { /* ignore */ }
 };
 

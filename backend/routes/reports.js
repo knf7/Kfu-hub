@@ -7,6 +7,28 @@ const { getLoanColumnFlags } = require('../utils/loanColumns');
 
 const router = express.Router();
 
+const runBatchQueries = async (client, batch) => {
+    const hasClient = client && typeof client.query === 'function';
+    const useParallel = !hasClient || client === db;
+    const runTask = (task) => {
+        if (typeof task === 'function') return task();
+        const [query, params] = task;
+        if (!hasClient || client === db) {
+            return db.query(query, params);
+        }
+        return client.query(query, params);
+    };
+    if (useParallel) {
+        return Promise.all(batch.map(runTask));
+    }
+    const results = [];
+    for (const task of batch) {
+        // eslint-disable-next-line no-await-in-loop
+        results.push(await runTask(task));
+    }
+    return results;
+};
+
 const buildLoanSqlHelpers = (columnFlags) => {
     const prefix = (alias = '') => (alias ? `${alias}.` : '');
     const deletedFilter = (alias = '') =>
@@ -67,6 +89,7 @@ router.get('/dashboard', checkPermission('can_view_dashboard'), async (req, res)
             }
         }
 
+        const queryClient = req.dbClient?.query ? req.dbClient : db;
         const [
             debtRes,
             profitRes,
@@ -78,13 +101,13 @@ router.get('/dashboard', checkPermission('can_view_dashboard'), async (req, res)
             recentRes,
             najizSummaryRes,
             najizDetailsRes
-        ] = await Promise.all([
-            db.query(
+        ] = await runBatchQueries(queryClient, [
+            [
                 `SELECT COALESCE(SUM(amount), 0) AS total_debt
                  FROM loans WHERE merchant_id = $1 AND status = 'Active'`,
                 [id]
-            ),
-            db.query(
+            ],
+            [
                 `SELECT COALESCE(SUM(
                     CASE
                         WHEN l.status IN ('Active', 'Paid', 'Raised')
@@ -96,8 +119,8 @@ router.get('/dashboard', checkPermission('can_view_dashboard'), async (req, res)
                  WHERE l.merchant_id = $1
                  ${loanSql.deletedFilter('l')}`,
                 [id]
-            ),
-            db.query(
+            ],
+            [
                 `SELECT
                    COUNT(*) AS total_customers,
                    COUNT(CASE WHEN total_active > 0 THEN 1 END) AS active_customers
@@ -110,15 +133,15 @@ router.get('/dashboard', checkPermission('can_view_dashboard'), async (req, res)
                    GROUP BY c.id
                  ) sub`,
                 [id]
-            ),
-            db.query(
+            ],
+            [
                 `SELECT COUNT(*) AS count
                  FROM loans
                  WHERE merchant_id = $1
                    AND DATE_TRUNC('month', created_at) = DATE_TRUNC('month', CURRENT_DATE)`,
                 [id]
-            ),
-            db.query(
+            ],
+            [
                 `SELECT
                    COALESCE(SUM(
                      CASE
@@ -132,22 +155,24 @@ router.get('/dashboard', checkPermission('can_view_dashboard'), async (req, res)
                    COALESCE(SUM(amount), 0) AS total
                  FROM loans WHERE merchant_id = $1`,
                 [id]
-            ),
-            db.query(
+            ],
+            [
                 `SELECT COUNT(DISTINCT customer_id) AS overdue_count
                  FROM loans
                  WHERE merchant_id = $1
                    AND status = 'Active'
                    AND transaction_date < CURRENT_DATE - INTERVAL '30 days'`,
                 [id]
+            ],
+            () => (
+                isMockedDb
+                    ? Promise.resolve({ rows: [{ count: 0 }] })
+                    : queryClient.query(
+                        `SELECT COUNT(*) AS count FROM loans WHERE merchant_id = $1 AND status = 'Raised'`,
+                        [id]
+                    )
             ),
-            isMockedDb
-                ? Promise.resolve({ rows: [{ count: 0 }] })
-                : db.query(
-                    `SELECT COUNT(*) AS count FROM loans WHERE merchant_id = $1 AND status = 'Raised'`,
-                    [id]
-                ),
-            db.query(
+            [
                 `SELECT l.id, l.amount, l.status, l.created_at, l.transaction_date,
                         c.full_name AS customer_name, c.mobile_number
                  FROM loans l
@@ -156,11 +181,12 @@ router.get('/dashboard', checkPermission('can_view_dashboard'), async (req, res)
                  ORDER BY l.created_at DESC
                  LIMIT 10`,
                 [id]
-            ),
-            isMockedDb
-                ? Promise.resolve({ rows: [{}] })
-                : db.query(
-                    `SELECT
+            ],
+            () => (
+                isMockedDb
+                    ? Promise.resolve({ rows: [{}] })
+                    : queryClient.query(
+                        `SELECT
                    COUNT(*) FILTER (
                      WHERE ${loanSql.isNajizCase()}
                         OR najiz_case_number IS NOT NULL
@@ -193,12 +219,14 @@ router.get('/dashboard', checkPermission('can_view_dashboard'), async (req, res)
                  FROM loans
                  WHERE merchant_id = $1
                    ${loanSql.deletedFilter()}`,
-                [id]
+                        [id]
+                    )
             ),
-            isMockedDb
-                ? Promise.resolve({ rows: [] })
-                : db.query(
-                    `SELECT
+            () => (
+                isMockedDb
+                    ? Promise.resolve({ rows: [] })
+                    : queryClient.query(
+                        `SELECT
                    l.id,
                    l.status,
                    l.transaction_date,
@@ -222,7 +250,8 @@ router.get('/dashboard', checkPermission('can_view_dashboard'), async (req, res)
                    )
                  ORDER BY ${loanSql.najizRaisedOrder} DESC
                  LIMIT 8`,
-                [id]
+                        [id]
+                    )
             )
         ]);
 
@@ -316,6 +345,7 @@ router.get('/analytics', checkPermission('can_view_analytics'), async (req, res)
             intervalSql = '6 months';
         }
 
+        const queryClient = req.dbClient?.query ? req.dbClient : db;
         const [
             trendRes,
             distRes,
@@ -323,8 +353,8 @@ router.get('/analytics', checkPermission('can_view_analytics'), async (req, res)
             overdueRes,
             collectionRes,
             profitSplitRes
-        ] = await Promise.all([
-            db.query(
+        ] = await runBatchQueries(queryClient, [
+            [
                 `SELECT
                    TO_CHAR(DATE_TRUNC($2, transaction_date), $3) AS month,
                    SUM(amount)  AS total,
@@ -336,8 +366,8 @@ router.get('/analytics', checkPermission('can_view_analytics'), async (req, res)
                  GROUP BY DATE_TRUNC($2, transaction_date)
                  ORDER BY DATE_TRUNC($2, transaction_date) ASC`,
                 [id, groupInterval, dateFormat, intervalSql]
-            ),
-            db.query(
+            ],
+            [
                 `SELECT
                    status,
                    COUNT(*)     AS count,
@@ -346,8 +376,8 @@ router.get('/analytics', checkPermission('can_view_analytics'), async (req, res)
                  GROUP BY status
                  ORDER BY count DESC`,
                 [id]
-            ),
-            db.query(
+            ],
+            [
                 `SELECT c.full_name, c.mobile_number,
                         SUM(l.amount) AS total_debt,
                         COUNT(l.id)   AS loan_count
@@ -358,8 +388,8 @@ router.get('/analytics', checkPermission('can_view_analytics'), async (req, res)
                  ORDER BY total_debt DESC
                  LIMIT 10`,
                 [id]
-            ),
-            db.query(
+            ],
+            [
                 `SELECT
                    CASE
                      WHEN age_days BETWEEN 30  AND 60  THEN '30-60 يوم'
@@ -381,8 +411,8 @@ router.get('/analytics', checkPermission('can_view_analytics'), async (req, res)
                  GROUP BY bucket
                  ORDER BY MIN(age_days)`,
                 [id]
-            ),
-            db.query(
+            ],
+            [
                 `SELECT
                    TO_CHAR(DATE_TRUNC('month', updated_at), 'YYYY-MM') AS month,
                    SUM(
@@ -400,8 +430,8 @@ router.get('/analytics', checkPermission('can_view_analytics'), async (req, res)
                  GROUP BY DATE_TRUNC('month', updated_at)
                  ORDER BY month ASC`,
                 [id]
-            ),
-            db.query(
+            ],
+            [
                 `SELECT
                    COALESCE(SUM(
                      CASE
@@ -434,7 +464,7 @@ router.get('/analytics', checkPermission('can_view_analytics'), async (req, res)
                  FROM loans
                  WHERE merchant_id = $1 ${loanSql.deletedFilter()}`,
                 [id]
-            )
+            ]
         ]);
 
         const profitSplitRow = profitSplitRes.rows[0] || {};
@@ -508,7 +538,7 @@ router.get('/ai-analysis', checkPermission('can_view_analytics'), async (req, re
             }
         }
 
-        // Gather all required data in parallel
+        const queryClient = req.dbClient?.query ? req.dbClient : db;
         const [
             totalsRes,
             monthlyRes,
@@ -516,9 +546,8 @@ router.get('/ai-analysis', checkPermission('can_view_analytics'), async (req, re
             bestMonthRes,
             avgLoanRes,
             riskSegRes
-        ] = await Promise.all([
-            // Portfolio totals
-            db.query(
+        ] = await runBatchQueries(queryClient, [
+            [
                 `SELECT
                    COALESCE(SUM(amount), 0)                                              AS total_portfolio,
                    COALESCE(SUM(CASE WHEN status='Paid'      THEN amount ELSE 0 END), 0) AS paid_amount,
@@ -530,9 +559,8 @@ router.get('/ai-analysis', checkPermission('can_view_analytics'), async (req, re
                    COUNT(CASE WHEN status='Cancelled' THEN 1 END)                        AS cancelled_count
                  FROM loans WHERE merchant_id = $1`,
                 [id]
-            ),
-            // Rolling 3-month comparison for growth trend
-            db.query(
+            ],
+            [
                 `SELECT
                    TO_CHAR(DATE_TRUNC('month', transaction_date), 'YYYY-MM') AS month,
                    SUM(amount) AS total,
@@ -544,9 +572,8 @@ router.get('/ai-analysis', checkPermission('can_view_analytics'), async (req, re
                  ORDER BY month DESC
                  LIMIT 6`,
                 [id]
-            ),
-            // Overdue clients list (Active, >30 days)
-            db.query(
+            ],
+            [
                 `SELECT c.full_name, c.mobile_number,
                         SUM(l.amount) AS debt,
                         MAX(EXTRACT(DAY FROM CURRENT_DATE - l.transaction_date))::int AS days_overdue
@@ -559,9 +586,8 @@ router.get('/ai-analysis', checkPermission('can_view_analytics'), async (req, re
                  ORDER BY debt DESC
                  LIMIT 20`,
                 [id]
-            ),
-            // Best performing month
-            db.query(
+            ],
+            [
                 `SELECT
                    TO_CHAR(DATE_TRUNC('month', transaction_date), 'YYYY-MM') AS month,
                    SUM(amount) AS total
@@ -571,9 +597,8 @@ router.get('/ai-analysis', checkPermission('can_view_analytics'), async (req, re
                  ORDER BY total DESC
                  LIMIT 1`,
                 [id]
-            ),
-            // Average loan size
-            db.query(
+            ],
+            [
                 `SELECT
                    COALESCE(AVG(amount), 0)         AS avg_amount,
                    COALESCE(MAX(amount), 0)         AS max_amount,
@@ -581,9 +606,8 @@ router.get('/ai-analysis', checkPermission('can_view_analytics'), async (req, re
                    COALESCE(STDDEV(amount), 0)      AS stddev_amount
                  FROM loans WHERE merchant_id = $1 AND status != 'Cancelled'`,
                 [id]
-            ),
-            // Risk segmentation: high(>90d), medium(60-90d), low(30-60d)
-            db.query(
+            ],
+            [
                 `SELECT
                    COUNT(CASE WHEN age_days > 90  THEN 1 END) AS high_risk,
                    COUNT(CASE WHEN age_days BETWEEN 60 AND 90 THEN 1 END) AS medium_risk,
@@ -595,7 +619,7 @@ router.get('/ai-analysis', checkPermission('can_view_analytics'), async (req, re
                    WHERE merchant_id = $1 AND status = 'Active'
                  ) sub`,
                 [id]
-            )
+            ]
         ]);
 
         const t = totalsRes.rows[0];

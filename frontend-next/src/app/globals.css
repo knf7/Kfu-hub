@@ -139,7 +139,7 @@
   --t-fast: 0.15s ease;
   --t-mid: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 
-  --font: var(--font-cairo), var(--font-tajawal), var(--font-noto-kufi), var(--font-geist-sans), system-ui, sans-serif;
+  --font: var(--font-cairo), var(--font-geist-sans), system-ui, sans-serif;
   --glass-bg: rgba(255, 255, 255, 0.7);
   --glass-border: rgba(255, 255, 255, 0.2);
   --glass-blur: blur(16px);

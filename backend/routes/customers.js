@@ -14,8 +14,13 @@ const resolveRatingsTable = async (client) => {
     if (ratingsTableCache.value !== null && (now - ratingsTableCache.checkedAt) < RATINGS_TABLE_CACHE_TTL_MS) {
         return ratingsTableCache.value;
     }
+    const runner = client?.query ? client.query.bind(client) : db.query;
+    if (!runner) {
+        ratingsTableCache = { value: false, checkedAt: now };
+        return false;
+    }
     try {
-        const ratingsTableCheck = await client.query(`SELECT to_regclass('public.customer_ratings') AS t`);
+        const ratingsTableCheck = await runner(`SELECT to_regclass('public.customer_ratings') AS t`);
         const exists = Boolean(ratingsTableCheck.rows[0]?.t);
         ratingsTableCache = { value: exists, checkedAt: now };
         return exists;
@@ -187,27 +192,9 @@ router.get('/', checkPermission('can_view_customers'), async (req, res) => {
         const limitNumber = Math.min(100, parseInt(limit, 10) || 20);
         const offset = (pageNumber - 1) * limitNumber;
         const isMockedDb = Boolean(req.dbClient?.query?._isMockFunction);
-        const runWithFreshClient = async (query, params) => {
-            if (!db.pool || typeof db.pool.connect !== 'function') {
-                return db.query(query, params);
-            }
-            const client = await db.pool.connect();
-            try {
-                await client.query('BEGIN');
-                await client.query('SET LOCAL app.merchant_id = $1', [req.merchantId]);
-                const result = await client.query(query, params);
-                await client.query('COMMIT');
-                return result;
-            } catch (err) {
-                try { await client.query('ROLLBACK'); } catch { }
-                throw err;
-            } finally {
-                client.release(true);
-            }
-        };
         let hasRatingsTable = false;
         if (process.env.NODE_ENV !== 'test' && !isMockedDb) {
-            hasRatingsTable = await resolveRatingsTable(req.dbClient);
+            hasRatingsTable = await resolveRatingsTable();
         }
 
         let whereClause = 'c.merchant_id = $1 AND c.deleted_at IS NULL';
@@ -238,113 +225,134 @@ router.get('/', checkPermission('can_view_customers'), async (req, res) => {
             }
         }
 
-        let useFreshClient = false;
-        const buildQuery = (useRatings, clause, includeLoanDeleted = true) => {
-            const loanDeletedClause = includeLoanDeleted ? 'AND l.deleted_at IS NULL' : '';
-            const ratingCte = useRatings
-                ? `,
-                rating_agg AS (
-                  SELECT
+        const runQuery = async (query, queryParams) => req.dbClient.query(query, queryParams);
+
+        const baseQuery = `
+            SELECT c.*,
+                   COUNT(*) OVER() AS total_count
+            FROM customers c
+            WHERE ${whereClause}
+            ORDER BY c.created_at DESC
+            LIMIT $${params.length + 1} OFFSET $${params.length + 2}
+        `;
+        const baseQueryFallback = `
+            SELECT c.*,
+                   COUNT(*) OVER() AS total_count
+            FROM customers c
+            WHERE ${whereClauseFallback}
+            ORDER BY c.created_at DESC
+            LIMIT $${params.length + 1} OFFSET $${params.length + 2}
+        `;
+
+        let baseResult;
+        try {
+            baseResult = await runQuery(baseQuery, [...params, limitNumber, offset]);
+        } catch (err) {
+            console.warn('Customers base query fallback:', err?.message || err);
+            baseResult = await runQuery(baseQueryFallback, [...params, limitNumber, offset]);
+        }
+
+        const totalCount = baseResult.rows.length
+            ? parseInt(baseResult.rows[0].total_count || 0, 10)
+            : 0;
+
+        const baseRows = baseResult.rows.map((row) => {
+            const { total_count, ...rest } = row;
+            return rest;
+        });
+        const customerIds = baseRows.map((row) => row.id).filter(Boolean);
+
+        const loanAggMap = new Map();
+        if (customerIds.length > 0) {
+            const loanAggQuery = `
+                SELECT
+                    l.customer_id,
+                    COALESCE(SUM(CASE WHEN l.status = 'Active' THEN l.amount ELSE 0 END), 0) AS total_debt,
+                    COALESCE(COUNT(l.id), 0) AS total_loans,
+                    COALESCE(COUNT(l.id) FILTER (WHERE l.status = 'Paid'), 0) AS paid_loans,
+                    COALESCE(COUNT(l.id) FILTER (WHERE l.status = 'Raised'), 0) AS raised_loans,
+                    COALESCE(COUNT(l.id) FILTER (WHERE l.status = 'Active'), 0) AS active_loans
+                FROM loans l
+                WHERE l.merchant_id = $1
+                  AND l.customer_id = ANY($2::uuid[])
+                  AND l.deleted_at IS NULL
+                GROUP BY l.customer_id
+            `;
+            const loanAggFallbackQuery = `
+                SELECT
+                    l.customer_id,
+                    COALESCE(SUM(CASE WHEN l.status = 'Active' THEN l.amount ELSE 0 END), 0) AS total_debt,
+                    COALESCE(COUNT(l.id), 0) AS total_loans,
+                    COALESCE(COUNT(l.id) FILTER (WHERE l.status = 'Paid'), 0) AS paid_loans,
+                    COALESCE(COUNT(l.id) FILTER (WHERE l.status = 'Raised'), 0) AS raised_loans,
+                    COALESCE(COUNT(l.id) FILTER (WHERE l.status = 'Active'), 0) AS active_loans
+                FROM loans l
+                WHERE l.merchant_id = $1
+                  AND l.customer_id = ANY($2::uuid[])
+                GROUP BY l.customer_id
+            `;
+
+            try {
+                const loanAggRes = await runQuery(loanAggQuery, [req.merchantId, customerIds]);
+                loanAggRes.rows.forEach((row) => loanAggMap.set(row.customer_id, row));
+            } catch (err) {
+                console.warn('Customers loan aggregate fallback:', err?.message || err);
+                try {
+                    const loanAggRes = await runQuery(loanAggFallbackQuery, [req.merchantId, customerIds]);
+                    loanAggRes.rows.forEach((row) => loanAggMap.set(row.customer_id, row));
+                } catch (fallbackErr) {
+                    console.warn('Customers loan aggregate failed:', fallbackErr?.message || fallbackErr);
+                }
+            }
+        }
+
+        const ratingAggMap = new Map();
+        if (hasRatingsTable && customerIds.length > 0) {
+            const ratingAggQuery = `
+                SELECT
                     cr.customer_id,
                     ROUND(COALESCE(AVG(cr.score) FILTER (WHERE cr.rating_scope = 'delivery'), 0)::numeric, 1) AS delivery_avg,
                     ROUND(COALESCE(AVG(cr.score) FILTER (WHERE cr.rating_scope = 'monthly'), 0)::numeric, 1) AS monthly_avg,
                     ROUND((
-                      COALESCE(AVG(cr.score) FILTER (WHERE cr.rating_scope = 'delivery'), 0) * 0.6
-                      + COALESCE(AVG(cr.score) FILTER (WHERE cr.rating_scope = 'monthly'), 0) * 0.4
+                        COALESCE(AVG(cr.score) FILTER (WHERE cr.rating_scope = 'delivery'), 0) * 0.6
+                        + COALESCE(AVG(cr.score) FILTER (WHERE cr.rating_scope = 'monthly'), 0) * 0.4
                     )::numeric, 1) AS overall_score
-                  FROM customer_ratings cr
-                  WHERE cr.merchant_id = $1
-                    AND cr.customer_id IN (SELECT id FROM base)
-                  GROUP BY cr.customer_id
-                )`
-                : '';
-            const ratingSelect = useRatings
-                ? `COALESCE(rating_agg.delivery_avg, 0) AS delivery_avg,
-                   COALESCE(rating_agg.monthly_avg, 0) AS monthly_avg,
-                   COALESCE(rating_agg.overall_score, 0) AS overall_score`
-                : `0::numeric AS delivery_avg,
-                   0::numeric AS monthly_avg,
-                   0::numeric AS overall_score`;
-            const ratingJoin = useRatings ? 'LEFT JOIN rating_agg ON rating_agg.customer_id = base.id' : '';
-
-            return `
-                WITH base AS (
-                    SELECT c.*,
-                           COUNT(*) OVER() AS total_count
-                    FROM customers c
-                    WHERE ${clause}
-                    ORDER BY c.created_at DESC
-                    LIMIT $${params.length + 1} OFFSET $${params.length + 2}
-                ),
-                loan_agg AS (
-                    SELECT
-                        l.customer_id,
-                        COALESCE(SUM(CASE WHEN l.status = 'Active' ${loanDeletedClause} THEN l.amount ELSE 0 END), 0) AS total_debt,
-                        COALESCE(COUNT(l.id) FILTER (WHERE ${loanDeletedClause ? 'l.deleted_at IS NULL' : 'true'}), 0) AS total_loans,
-                        COALESCE(COUNT(l.id) FILTER (WHERE ${loanDeletedClause ? "l.deleted_at IS NULL AND l.status = 'Paid'" : "l.status = 'Paid'"}), 0) AS paid_loans,
-                        COALESCE(COUNT(l.id) FILTER (WHERE ${loanDeletedClause ? "l.deleted_at IS NULL AND l.status = 'Raised'" : "l.status = 'Raised'"}), 0) AS raised_loans,
-                        COALESCE(COUNT(l.id) FILTER (WHERE ${loanDeletedClause ? "l.deleted_at IS NULL AND l.status = 'Active'" : "l.status = 'Active'"}), 0) AS active_loans
-                    FROM loans l
-                    WHERE l.merchant_id = $1
-                      ${loanDeletedClause}
-                      AND l.customer_id IN (SELECT id FROM base)
-                    GROUP BY l.customer_id
-                )
-                ${ratingCte}
-                SELECT base.*,
-                       COALESCE(loan_agg.total_debt, 0) AS total_debt,
-                       COALESCE(loan_agg.total_loans, 0) AS total_loans,
-                       COALESCE(loan_agg.paid_loans, 0) AS paid_loans,
-                       COALESCE(loan_agg.raised_loans, 0) AS raised_loans,
-                       COALESCE(loan_agg.active_loans, 0) AS active_loans,
-                       ${ratingSelect}
-                FROM base
-                LEFT JOIN loan_agg ON loan_agg.customer_id = base.id
-                ${ratingJoin}
-                ORDER BY base.created_at DESC
+                FROM customer_ratings cr
+                WHERE cr.merchant_id = $1
+                  AND cr.customer_id = ANY($2::uuid[])
+                GROUP BY cr.customer_id
             `;
-        };
-
-        const runQuery = async (query, queryParams) => {
-            if (useFreshClient) {
-                return runWithFreshClient(query, queryParams);
+            try {
+                const ratingRes = await runQuery(ratingAggQuery, [req.merchantId, customerIds]);
+                ratingRes.rows.forEach((row) => ratingAggMap.set(row.customer_id, row));
+            } catch (err) {
+                console.warn('Customers rating aggregate failed:', err?.message || err);
             }
-            return req.dbClient.query(query, queryParams);
-        };
-
-        let result;
-        try {
-            result = await runQuery(
-                buildQuery(hasRatingsTable, whereClause),
-                [...params, limitNumber, offset]
-            );
-        } catch (err) {
-            console.warn('Customers query fallback:', err?.message || err);
-            useFreshClient = true;
-            result = await runWithFreshClient(
-                buildQuery(false, whereClauseFallback, false),
-                [...params, limitNumber, offset]
-            );
         }
 
-        const totalCount = result.rows.length
-            ? parseInt(result.rows[0].total_count || 0, 10)
-            : 0;
-
-        const enriched = result.rows.map((c) => {
-            const { total_count, ...rest } = c;
-            const paid = parseInt(c.paid_loans || 0, 10);
-            const raised = parseInt(c.raised_loans || 0, 10);
-            const active = parseInt(c.active_loans || 0, 10);
-            const total = parseInt(c.total_loans || 0, 10);
+        const enriched = baseRows.map((c) => {
+            const loanAgg = loanAggMap.get(c.id) || {};
+            const ratingAgg = ratingAggMap.get(c.id) || {};
+            const paid = parseInt(loanAgg.paid_loans || 0, 10);
+            const raised = parseInt(loanAgg.raised_loans || 0, 10);
+            const active = parseInt(loanAgg.active_loans || 0, 10);
+            const total = parseInt(loanAgg.total_loans || 0, 10);
             const rawScore = 100 + (paid * 3) - (active * 8) - (raised * 15);
             const computedRating = Math.max(0, Math.min(10, rawScore / 10));
-            const manualRating = Number(c.overall_score || 0);
+            const manualRating = Number(ratingAgg.overall_score || 0);
             const rating = manualRating > 0 ? manualRating : computedRating;
             const customer_status = raised > 0 ? 'raised' : active > 0 ? 'unpaid' : total > 0 ? 'paid' : 'new';
 
             return enrichCustomer({
-                ...rest,
+                ...c,
+                total_debt: Number(loanAgg.total_debt || 0),
+                total_loans: Number(loanAgg.total_loans || 0),
+                paid_loans: Number(loanAgg.paid_loans || 0),
+                raised_loans: Number(loanAgg.raised_loans || 0),
+                active_loans: Number(loanAgg.active_loans || 0),
+                delivery_avg: Number(ratingAgg.delivery_avg || 0),
+                monthly_avg: Number(ratingAgg.monthly_avg || 0),
+                overall_score: Number(ratingAgg.overall_score || 0),
                 rating: Number(rating.toFixed(1)),
                 rating_source: manualRating > 0 ? 'manual' : 'system',
                 customer_status

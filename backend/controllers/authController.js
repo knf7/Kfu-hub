@@ -29,6 +29,68 @@ const otpSchema = Joi.object({
     rememberMe: Joi.boolean().optional()
 });
 
+const fetchAuthLookup = async (identifier) => {
+    try {
+        return await db.query(
+            `SELECT * FROM auth_lookup_view WHERE (email = $1 OR username = $1)`,
+            [identifier]
+        );
+    } catch (err) {
+        console.warn('auth_lookup_view unavailable, using fallback lookup:', err?.message || err);
+    }
+
+    const merchantRes = await db.query(
+        `SELECT
+            id,
+            id AS merchant_id,
+            business_name AS name,
+            email,
+            username,
+            password_hash,
+            'merchant' AS role,
+            subscription_plan,
+            subscription_status,
+            expiry_date,
+            status,
+            NULL::varchar AS merchant_status,
+            NULL::jsonb AS permissions,
+            locked_until,
+            failed_login_attempts
+        FROM merchants
+        WHERE email = $1 OR username = $1
+        LIMIT 1`,
+        [identifier]
+    );
+    if (merchantRes.rows.length > 0) return merchantRes;
+
+    return db.query(
+        `SELECT
+            e.id,
+            e.merchant_id,
+            e.full_name AS name,
+            e.email,
+            e.email AS username,
+            e.password_hash,
+            'employee' AS role,
+            NULL::varchar AS subscription_plan,
+            CASE
+                WHEN m.expiry_date IS NOT NULL AND CURRENT_TIMESTAMP > m.expiry_date THEN 'Expired'
+                ELSE m.subscription_status
+            END AS subscription_status,
+            m.expiry_date,
+            m.status,
+            m.subscription_status AS merchant_status,
+            e.permissions,
+            NULL::timestamp AS locked_until,
+            0 AS failed_login_attempts
+        FROM merchant_employees e
+        JOIN merchants m ON m.id = e.merchant_id
+        WHERE e.deleted_at IS NULL AND e.email = $1
+        LIMIT 1`,
+        [identifier]
+    );
+};
+
 // ── Generate 6-digit OTP ──
 function generateOTP() {
     return crypto.randomInt(100000, 999999).toString();
@@ -113,9 +175,7 @@ exports.login = async (req, res) => {
         const { identifier, password, rememberMe } = value;
         const isEmail = identifier.includes('@');
 
-        const queryStr = `SELECT * FROM auth_lookup_view WHERE (email = $1 OR username = $1)`;
-
-        const result = await db.query(queryStr, [identifier]);
+        const result = await fetchAuthLookup(identifier);
         if (result.rows.length === 0) {
             return res.status(401).json({ error: 'البريد الإلكتروني/اسم المستخدم أو كلمة المرور غير صحيحة' });
         }
