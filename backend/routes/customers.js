@@ -73,23 +73,25 @@ const ensureCustomerRatingsTable = async (client) => {
     }
     try {
         const check = await client.query(`SELECT to_regclass('public.customer_ratings') AS t`);
-        if (check.rows[0]?.t) return true;
-        await client.query(`
-            CREATE TABLE IF NOT EXISTS customer_ratings (
-                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-                merchant_id UUID NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
-                customer_id UUID NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
-                loan_id UUID NULL REFERENCES loans(id) ON DELETE CASCADE,
-                rating_scope VARCHAR(20) NOT NULL CHECK (rating_scope IN ('delivery', 'monthly')),
-                score NUMERIC(3, 1) NOT NULL CHECK (score >= 1 AND score <= 10),
-                month_key DATE NULL,
-                notes TEXT NULL,
-                is_locked BOOLEAN NOT NULL DEFAULT FALSE,
-                rated_by UUID NULL,
-                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-            )
-        `);
+        const exists = Boolean(check.rows[0]?.t);
+        if (!exists) {
+            await client.query(`
+                CREATE TABLE IF NOT EXISTS customer_ratings (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    merchant_id UUID NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
+                    customer_id UUID NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+                    loan_id UUID NULL REFERENCES loans(id) ON DELETE CASCADE,
+                    rating_scope VARCHAR(20) NOT NULL CHECK (rating_scope IN ('delivery', 'monthly')),
+                    score NUMERIC(3, 1) NOT NULL CHECK (score >= 1 AND score <= 10),
+                    month_key DATE NULL,
+                    notes TEXT NULL,
+                    is_locked BOOLEAN NOT NULL DEFAULT FALSE,
+                    rated_by UUID NULL,
+                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            `);
+        }
         await client.query(`
             CREATE UNIQUE INDEX IF NOT EXISTS uniq_customer_delivery_rating
                 ON customer_ratings (merchant_id, loan_id, rating_scope)
