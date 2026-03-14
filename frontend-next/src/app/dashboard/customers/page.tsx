@@ -576,7 +576,7 @@ function EditCustomerModal({ customer, onClose, onSaved }: any) {
                 email: form.email
             };
             const res = await customersAPI.update(customer.id, payload);
-            const updated = res?.data?.customer || res?.customer;
+            const updated = (res as any)?.data?.customer;
             onSaved(updated);
         } catch (err: any) {
             setError(err.response?.data?.error || 'حدث خطأ أثناء التعديل');
