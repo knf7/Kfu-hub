@@ -52,7 +52,7 @@ export default function NajizCasesPage() {
     const fetchCases = async () => {
         try {
             setLoading(true);
-            const response = await loansAPI.getAll({ is_najiz_case: true, limit: 100 });
+            const response = await loansAPI.getAll({ is_najiz_case: true, limit: 100, skip_count: true });
             const data = response.data || response;
             setCases(
                 (data.loans || []).map((loan: NajizCase) => ({

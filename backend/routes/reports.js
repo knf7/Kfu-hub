@@ -9,7 +9,7 @@ const router = express.Router();
 
 const runBatchQueries = async (client, batch) => {
     const hasClient = client && typeof client.query === 'function';
-    const useParallel = !hasClient || client === db;
+    const useSharedClient = hasClient && client !== db;
     const runTask = (task) => {
         if (typeof task === 'function') return task();
         const [query, params] = task;
@@ -18,14 +18,37 @@ const runBatchQueries = async (client, batch) => {
         }
         return client.query(query, params);
     };
-    if (useParallel) {
-        return Promise.all(batch.map(runTask));
+
+    if (useSharedClient) {
+        const results = [];
+        for (const task of batch) {
+            // eslint-disable-next-line no-await-in-loop
+            results.push(await runTask(task));
+        }
+        return results;
     }
-    const results = [];
-    for (const task of batch) {
-        // eslint-disable-next-line no-await-in-loop
-        results.push(await runTask(task));
+
+    const poolMax = Number(db.pool?.options?.max) || 4;
+    const maxParallel = Math.max(1, Math.min(batch.length, Math.max(1, poolMax - 1)));
+    if (maxParallel <= 1) {
+        const results = [];
+        for (const task of batch) {
+            // eslint-disable-next-line no-await-in-loop
+            results.push(await runTask(task));
+        }
+        return results;
     }
+
+    const results = new Array(batch.length);
+    let index = 0;
+    const workers = Array.from({ length: maxParallel }, async () => {
+        while (index < batch.length) {
+            const current = index;
+            index += 1;
+            results[current] = await runTask(batch[current]);
+        }
+    });
+    await Promise.all(workers);
     return results;
 };
 

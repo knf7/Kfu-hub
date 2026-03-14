@@ -707,10 +707,11 @@ const loanSchema = Joi.object({
 // GET /api/loans — List with pagination & filters
 router.get('/', checkPermission('can_view_loans'), async (req, res) => {
     try {
-        const { page = 1, limit = 20, status, customerId, startDate, endDate, search, is_najiz_case } = req.query;
+        const { page = 1, limit = 20, status, customerId, startDate, endDate, search, is_najiz_case, skip_count } = req.query;
         const pageNumber = Math.max(1, parseInt(page, 10) || 1);
         const limitNumber = Math.min(100, parseInt(limit, 10) || 20);
         const offset = (pageNumber - 1) * limitNumber;
+        const skipCount = skip_count === 'true' || req.query.skipCount === 'true';
         let conds = ['l.merchant_id = $1', 'l.deleted_at IS NULL'];
         let params = [req.merchantId];
         let i = 2;
@@ -741,7 +742,8 @@ router.get('/', checkPermission('can_view_loans'), async (req, res) => {
             endDate: endDate || null,
             search: search || null,
             delayed: req.query.delayed === 'true',
-            is_najiz_case: is_najiz_case || null
+            is_najiz_case: is_najiz_case || null,
+            skip_count: skipCount
         };
         const cacheKey = `loans:list:${req.merchantId}:${Buffer.from(JSON.stringify(cacheParams)).toString('base64')}`;
         const useCache = !isMockedDb;
@@ -756,6 +758,7 @@ router.get('/', checkPermission('can_view_loans'), async (req, res) => {
             }
         }
 
+        const countSelect = skipCount ? '' : ', COUNT(*) OVER() AS total_count';
         const dataQuery = `
             SELECT l.id, l.amount, l.principal_amount, l.profit_percentage, l.receipt_number, l.receipt_image_url,
                    l.status, l.transaction_date, l.created_at, l.notes,
@@ -764,8 +767,8 @@ router.get('/', checkPermission('can_view_loans'), async (req, res) => {
                    c.national_id, c.mobile_number,
                    l.najiz_case_number, l.najiz_case_amount, l.najiz_status,
                    l.najiz_collected_amount, l.is_najiz_case,
-                   l.najiz_plaintiff_name, l.najiz_plaintiff_national_id, l.najiz_raised_date,
-                   COUNT(*) OVER() AS total_count
+                   l.najiz_plaintiff_name, l.najiz_plaintiff_national_id, l.najiz_raised_date
+                   ${countSelect}
             FROM loans l
             LEFT JOIN customers c ON l.customer_id = c.id
             WHERE ${where}
@@ -774,9 +777,9 @@ router.get('/', checkPermission('can_view_loans'), async (req, res) => {
         `;
 
         const dataRes = await req.dbClient.query(dataQuery, [...params, limitNumber, offset]);
-        const totalCount = dataRes.rows.length
-            ? parseInt(dataRes.rows[0].total_count || 0, 10)
-            : 0;
+        const totalCount = skipCount
+            ? dataRes.rows.length
+            : (dataRes.rows.length ? parseInt(dataRes.rows[0].total_count || 0, 10) : 0);
         const payload = {
             loans: dataRes.rows.map((row) => {
                 const { total_count, ...rest } = row;
@@ -786,7 +789,7 @@ router.get('/', checkPermission('can_view_loans'), async (req, res) => {
                 page: pageNumber,
                 limit: limitNumber,
                 totalCount,
-                totalPages: Math.ceil(totalCount / limitNumber)
+                totalPages: skipCount ? 1 : Math.ceil(totalCount / limitNumber)
             }
         };
 
