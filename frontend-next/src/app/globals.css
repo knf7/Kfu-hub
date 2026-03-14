@@ -14,6 +14,11 @@
 
 @custom-variant dark (&:is(.dark *));
 
+.cv-auto {
+  content-visibility: auto;
+  contain-intrinsic-size: 1px 800px;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

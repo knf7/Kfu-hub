@@ -156,7 +156,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section id="features" className="py-32 bg-slate-50 border-t border-slate-100 relative">
+      <section id="features" className="py-32 bg-slate-50 border-t border-slate-100 relative cv-auto">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center max-w-3xl mx-auto mb-20">
             <h2 className="text-3xl font-bold text-slate-900 mb-4">كل ما تحتاجه لإدارة أعمالك المالية</h2>
@@ -230,7 +230,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <footer className="bg-slate-50 border-t border-slate-200 pt-16 pb-8">
+      <footer className="bg-slate-50 border-t border-slate-200 pt-16 pb-8 cv-auto">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-12">
             <div className="col-span-2">

@@ -349,7 +349,7 @@ export default function PricingPage() {
           </div>
         )}
 
-        <div className="pricing-note">
+        <div className="pricing-note cv-auto">
           <p>جميع الأسعار بالريال السعودي وتشمل ضريبة القيمة المضافة.</p>
           <div className="pricing-links">
             <a href="mailto:aseel.ksa.sa.org@gmail.com">aseel.ksa.sa.org@gmail.com</a>

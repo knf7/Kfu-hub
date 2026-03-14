@@ -56,10 +56,13 @@ router.get('/dashboard', checkPermission('can_view_dashboard'), async (req, res)
         const isMockedDb = Boolean(db.query && db.query._isMockFunction);
         const cacheKey = `reports:dashboard:${id}`;
         const useCache = !isMockedDb;
+        const ttlSeconds = Number(process.env.REPORTS_DASHBOARD_TTL || process.env.REPORTS_CACHE_TTL || 120);
+        const swrSeconds = Math.min(60, Math.max(10, Math.floor(ttlSeconds / 2)));
+        const cacheHeader = `private, max-age=${ttlSeconds}, stale-while-revalidate=${swrSeconds}, stale-if-error=300`;
         if (useCache) {
             const cached = await getCache(cacheKey);
             if (cached) {
-                res.set('Cache-Control', 'private, max-age=30');
+                res.set('Cache-Control', cacheHeader);
                 return res.json(cached);
             }
         }
@@ -257,10 +260,9 @@ router.get('/dashboard', checkPermission('can_view_dashboard'), async (req, res)
             najizDetails: najizDetailsRes.rows
         };
 
-        const ttlSeconds = Number(process.env.REPORTS_CACHE_TTL || 30);
         if (useCache) {
             await setCache(cacheKey, payload, Number.isFinite(ttlSeconds) ? ttlSeconds : 30);
-            res.set('Cache-Control', 'private, max-age=30');
+            res.set('Cache-Control', cacheHeader);
         }
         res.json(payload);
     } catch (err) {
@@ -281,10 +283,13 @@ router.get('/analytics', checkPermission('can_view_analytics'), async (req, res)
         const interval = req.query.interval || 'month';
         const cacheKey = `reports:analytics:${id}:${interval}`;
         const useCache = !isMockedDb;
+        const ttlSeconds = Number(process.env.REPORTS_ANALYTICS_TTL || 180);
+        const swrSeconds = Math.min(90, Math.max(20, Math.floor(ttlSeconds / 2)));
+        const cacheHeader = `private, max-age=${ttlSeconds}, stale-while-revalidate=${swrSeconds}, stale-if-error=300`;
         if (useCache) {
             const cached = await getCache(cacheKey);
             if (cached) {
-                res.set('Cache-Control', 'private, max-age=60');
+                res.set('Cache-Control', cacheHeader);
                 return res.json(cached);
             }
         }
@@ -459,10 +464,9 @@ router.get('/analytics', checkPermission('can_view_analytics'), async (req, res)
             }
         };
 
-        const ttlSeconds = Number(process.env.REPORTS_ANALYTICS_CACHE_TTL || 60);
         if (useCache) {
             await setCache(cacheKey, payload, Number.isFinite(ttlSeconds) ? ttlSeconds : 60);
-            res.set('Cache-Control', 'private, max-age=60');
+            res.set('Cache-Control', cacheHeader);
         }
         res.json(payload);
     } catch (err) {
@@ -493,10 +497,13 @@ router.get('/ai-analysis', checkPermission('can_view_analytics'), async (req, re
 
         const cacheKey = `reports:ai:${id}`;
         const useCache = !isMockedDb;
+        const ttlSeconds = Number(process.env.REPORTS_AI_TTL || 600);
+        const swrSeconds = Math.min(300, Math.max(60, Math.floor(ttlSeconds / 2)));
+        const cacheHeader = `private, max-age=${ttlSeconds}, stale-while-revalidate=${swrSeconds}, stale-if-error=600`;
         if (useCache) {
             const cached = await getCache(cacheKey);
             if (cached) {
-                res.set('Cache-Control', 'private, max-age=300');
+                res.set('Cache-Control', cacheHeader);
                 return res.json(cached);
             }
         }
@@ -802,10 +809,9 @@ router.get('/ai-analysis', checkPermission('can_view_analytics'), async (req, re
             generatedAt: new Date().toISOString()
         };
 
-        const ttlSeconds = Number(process.env.REPORTS_AI_CACHE_TTL || 300);
         if (useCache) {
             await setCache(cacheKey, payload, Number.isFinite(ttlSeconds) ? ttlSeconds : 300);
-            res.set('Cache-Control', 'private, max-age=300');
+            res.set('Cache-Control', cacheHeader);
         }
 
         res.json(payload);
