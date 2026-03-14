@@ -2,6 +2,7 @@ import axios from 'axios';
 
 const API_CACHE_PREFIX = 'api-cache:';
 const API_CACHE_TTL_MS = 1000 * 120;
+const API_CACHE_STALE_MS = 1000 * 60 * 10;
 const memoryCache = new Map<string, { data: any; savedAt: number }>();
 export const DASHBOARD_DIRTY_KEY = 'dashboard-dirty';
 const DATA_SYNC_STORAGE_KEY = 'aseel-data-sync';
@@ -79,11 +80,17 @@ const buildCacheKey = (url: string, params?: any) => {
     return `${API_CACHE_PREFIX}${tag}::${url}?${query}`;
 };
 
-const readCached = (key: string) => {
+const readCached = (key: string, allowStale = false) => {
     const now = Date.now();
     const inMemory = memoryCache.get(key);
-    if (inMemory && now - inMemory.savedAt < API_CACHE_TTL_MS) {
-        return inMemory.data;
+    if (inMemory) {
+        const age = now - inMemory.savedAt;
+        if (age < API_CACHE_TTL_MS) {
+            return { data: inMemory.data, stale: false };
+        }
+        if (allowStale && age < API_CACHE_STALE_MS) {
+            return { data: inMemory.data, stale: true };
+        }
     }
     if (typeof window === 'undefined') return undefined;
     try {
@@ -91,12 +98,17 @@ const readCached = (key: string) => {
         if (!raw) return undefined;
         const parsed = JSON.parse(raw);
         if (!parsed || typeof parsed !== 'object') return undefined;
-        if (!parsed.savedAt || now - parsed.savedAt > API_CACHE_TTL_MS) {
+        if (!parsed.savedAt) return undefined;
+        const age = now - parsed.savedAt;
+        if (age > API_CACHE_STALE_MS) {
             sessionStorage.removeItem(key);
             return undefined;
         }
         memoryCache.set(key, { data: parsed.data, savedAt: parsed.savedAt });
-        return parsed.data;
+        if (age < API_CACHE_TTL_MS) {
+            return { data: parsed.data, stale: false };
+        }
+        return allowStale ? { data: parsed.data, stale: true } : undefined;
     } catch {
         return undefined;
     }
@@ -113,7 +125,8 @@ const writeCached = (key: string, data: any) => {
 
 const peekCached = (url: string, config: any = {}) => {
     const key = buildCacheKey(url, config?.params);
-    return readCached(key);
+    const cached = readCached(key, true);
+    return cached?.data;
 };
 
 const clearCacheByPrefix = (urlPrefix: string) => {
@@ -179,10 +192,12 @@ const api = axios.create({
 
 const cachedGet = async (url: string, config: any = {}) => {
     const key = buildCacheKey(url, config?.params);
-    const cached = readCached(key);
+    const cached = readCached(key, true);
     if (cached !== undefined) {
-        warmCache(url, config, true);
-        return Promise.resolve({ data: cached } as any);
+        if (cached?.stale) {
+            warmCache(url, config, true);
+        }
+        return Promise.resolve({ data: cached.data } as any);
     }
     const res = await api.get(url, config);
     writeCached(key, res.data);
@@ -191,8 +206,8 @@ const cachedGet = async (url: string, config: any = {}) => {
 
 const warmCache = async (url: string, config: any = {}, force = false) => {
     const key = buildCacheKey(url, config?.params);
-    const cached = readCached(key);
-    if (!force && cached !== undefined) return;
+    const cached = readCached(key, true);
+    if (!force && cached !== undefined && !cached?.stale) return;
     try {
         const res = await api.get(url, config);
         writeCached(key, res.data);

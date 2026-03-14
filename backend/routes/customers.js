@@ -71,63 +71,111 @@ const ensureCustomerRatingsTable = async (client) => {
     if (!client?.query || client?.query?._isMockFunction || process.env.NODE_ENV === 'test') {
         return true;
     }
-    try {
-        const check = await client.query(`SELECT to_regclass('public.customer_ratings') AS t`);
-        const exists = Boolean(check.rows[0]?.t);
-        if (!exists) {
-            await client.query(`
-                CREATE TABLE IF NOT EXISTS customer_ratings (
-                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                    merchant_id UUID NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
-                    customer_id UUID NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
-                    loan_id UUID NULL REFERENCES loans(id) ON DELETE CASCADE,
-                    rating_scope VARCHAR(20) NOT NULL CHECK (rating_scope IN ('delivery', 'monthly')),
-                    score NUMERIC(3, 1) NOT NULL CHECK (score >= 1 AND score <= 10),
-                    month_key DATE NULL,
-                    notes TEXT NULL,
-                    is_locked BOOLEAN NOT NULL DEFAULT FALSE,
-                    rated_by UUID NULL,
-                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-                )
+
+    const runEnsure = async (dbClient) => {
+        try {
+            const check = await dbClient.query(`SELECT to_regclass('public.customer_ratings') AS t`);
+            const exists = Boolean(check.rows[0]?.t);
+
+            // Best-effort: ensure uuid helpers are available when creating the table.
+            if (!exists) {
+                try { await dbClient.query(`CREATE EXTENSION IF NOT EXISTS "pgcrypto"`); } catch { }
+                try { await dbClient.query(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`); } catch { }
+            }
+
+            const uuidFnResult = await dbClient.query(
+                `SELECT to_regprocedure('gen_random_uuid()') AS gen,
+                        to_regprocedure('uuid_generate_v4()') AS uuid`
+            );
+            const uuidDefault = uuidFnResult.rows[0]?.gen
+                ? 'gen_random_uuid()'
+                : (uuidFnResult.rows[0]?.uuid ? 'uuid_generate_v4()' : "md5(random()::text || clock_timestamp()::text)::uuid");
+
+            if (!exists) {
+                await dbClient.query(`
+                    CREATE TABLE IF NOT EXISTS customer_ratings (
+                        id UUID PRIMARY KEY DEFAULT ${uuidDefault},
+                        merchant_id UUID NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
+                        customer_id UUID NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+                        loan_id UUID NULL REFERENCES loans(id) ON DELETE CASCADE,
+                        rating_scope VARCHAR(20) NOT NULL CHECK (rating_scope IN ('delivery', 'monthly')),
+                        score NUMERIC(3, 1) NOT NULL CHECK (score >= 1 AND score <= 10),
+                        month_key DATE NULL,
+                        notes TEXT NULL,
+                        is_locked BOOLEAN NOT NULL DEFAULT FALSE,
+                        rated_by UUID NULL,
+                        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    )
+                `);
+            }
+
+            const updateFn = await dbClient.query(
+                `SELECT to_regprocedure('public.update_updated_at_column()') AS fn`
+            );
+            if (!updateFn.rows[0]?.fn) {
+                await dbClient.query(`
+                    CREATE OR REPLACE FUNCTION update_updated_at_column()
+                    RETURNS TRIGGER AS $$
+                    BEGIN
+                        NEW.updated_at = CURRENT_TIMESTAMP;
+                        RETURN NEW;
+                    END;
+                    $$ LANGUAGE plpgsql;
+                `);
+            }
+
+            await dbClient.query(`
+                CREATE UNIQUE INDEX IF NOT EXISTS uniq_customer_delivery_rating
+                    ON customer_ratings (merchant_id, loan_id, rating_scope)
+                    WHERE rating_scope = 'delivery' AND loan_id IS NOT NULL
             `);
+            await dbClient.query(`
+                CREATE UNIQUE INDEX IF NOT EXISTS uniq_customer_monthly_rating
+                    ON customer_ratings (merchant_id, customer_id, month_key, rating_scope)
+                    WHERE rating_scope = 'monthly' AND month_key IS NOT NULL
+            `);
+            await dbClient.query(`
+                CREATE INDEX IF NOT EXISTS idx_customer_ratings_customer
+                    ON customer_ratings (merchant_id, customer_id, created_at DESC)
+            `);
+            await dbClient.query(`
+                CREATE INDEX IF NOT EXISTS idx_customer_ratings_scope
+                    ON customer_ratings (merchant_id, rating_scope, month_key DESC)
+            `);
+            await dbClient.query(`
+                DROP TRIGGER IF EXISTS update_customer_ratings_updated_at ON customer_ratings;
+                CREATE TRIGGER update_customer_ratings_updated_at
+                    BEFORE UPDATE ON customer_ratings
+                    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()
+            `);
+            await dbClient.query(`
+                ALTER TABLE customer_ratings ENABLE ROW LEVEL SECURITY;
+                DROP POLICY IF EXISTS tenant_customer_ratings_isolation ON customer_ratings;
+                CREATE POLICY tenant_customer_ratings_isolation ON customer_ratings
+                    FOR ALL
+                    USING (merchant_id = current_setting('app.merchant_id', true)::UUID)
+                    WITH CHECK (merchant_id = current_setting('app.merchant_id', true)::UUID)
+            `);
+            return true;
+        } catch (err) {
+            console.error('Ensure customer_ratings table failed:', err);
+            return false;
         }
-        await client.query(`
-            CREATE UNIQUE INDEX IF NOT EXISTS uniq_customer_delivery_rating
-                ON customer_ratings (merchant_id, loan_id, rating_scope)
-                WHERE rating_scope = 'delivery' AND loan_id IS NOT NULL
-        `);
-        await client.query(`
-            CREATE UNIQUE INDEX IF NOT EXISTS uniq_customer_monthly_rating
-                ON customer_ratings (merchant_id, customer_id, month_key, rating_scope)
-                WHERE rating_scope = 'monthly' AND month_key IS NOT NULL
-        `);
-        await client.query(`
-            CREATE INDEX IF NOT EXISTS idx_customer_ratings_customer
-                ON customer_ratings (merchant_id, customer_id, created_at DESC)
-        `);
-        await client.query(`
-            CREATE INDEX IF NOT EXISTS idx_customer_ratings_scope
-                ON customer_ratings (merchant_id, rating_scope, month_key DESC)
-        `);
-        await client.query(`
-            DROP TRIGGER IF EXISTS update_customer_ratings_updated_at ON customer_ratings;
-            CREATE TRIGGER update_customer_ratings_updated_at
-                BEFORE UPDATE ON customer_ratings
-                FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()
-        `);
-        await client.query(`
-            ALTER TABLE customer_ratings ENABLE ROW LEVEL SECURITY;
-            DROP POLICY IF EXISTS tenant_customer_ratings_isolation ON customer_ratings;
-            CREATE POLICY tenant_customer_ratings_isolation ON customer_ratings
-                FOR ALL
-                USING (merchant_id = current_setting('app.merchant_id', true)::UUID)
-                WITH CHECK (merchant_id = current_setting('app.merchant_id', true)::UUID)
-        `);
-        return true;
-    } catch (err) {
-        console.error('Ensure customer_ratings table failed:', err);
+    };
+
+    const primaryResult = await runEnsure(client);
+    if (primaryResult) return true;
+
+    if (!db.pool || typeof db.pool.connect !== 'function') {
         return false;
+    }
+
+    const fallbackClient = await db.pool.connect();
+    try {
+        return await runEnsure(fallbackClient);
+    } finally {
+        fallbackClient.release(true);
     }
 };
 
@@ -179,104 +227,83 @@ router.get('/', checkPermission('can_view_customers'), async (req, res) => {
         };
         const cacheKey = `customers:list:${req.merchantId}:${Buffer.from(JSON.stringify(cacheParams)).toString('base64')}`;
         const useCache = !isMockedDb;
+        const ttlSeconds = Number(process.env.CUSTOMERS_LIST_CACHE_TTL || 120);
+        const swrSeconds = Math.min(60, Math.max(10, Math.floor(ttlSeconds / 2)));
+        const cacheHeader = `private, max-age=${ttlSeconds}, stale-while-revalidate=${swrSeconds}, stale-if-error=300`;
         if (useCache) {
             const cached = await getCache(cacheKey);
             if (cached) {
-                res.set('Cache-Control', 'private, max-age=30');
+                res.set('Cache-Control', cacheHeader);
                 return res.json(cached);
             }
         }
 
-        // Get total count
         let useFreshClient = false;
-        let totalCount = 0;
-        try {
-            const countResult = await req.dbClient.query(
-                `SELECT COUNT(*) FROM customers c WHERE ${whereClause}`,
-                params
-            );
-            totalCount = parseInt(countResult.rows[0].count);
-        } catch (err) {
-            console.warn('Customers count fallback:', err?.message || err);
-            useFreshClient = true;
-            const fallbackResult = await runWithFreshClient(
-                `SELECT COUNT(*) FROM customers c WHERE ${whereClauseFallback}`,
-                params
-            );
-            totalCount = parseInt(fallbackResult.rows[0].count);
-        }
+        const buildQuery = (useRatings, clause, includeLoanDeleted = true) => {
+            const loanDeletedClause = includeLoanDeleted ? 'AND l.deleted_at IS NULL' : '';
+            const ratingCte = useRatings
+                ? `,
+                rating_agg AS (
+                  SELECT
+                    cr.customer_id,
+                    ROUND(COALESCE(AVG(cr.score) FILTER (WHERE cr.rating_scope = 'delivery'), 0)::numeric, 1) AS delivery_avg,
+                    ROUND(COALESCE(AVG(cr.score) FILTER (WHERE cr.rating_scope = 'monthly'), 0)::numeric, 1) AS monthly_avg,
+                    ROUND((
+                      COALESCE(AVG(cr.score) FILTER (WHERE cr.rating_scope = 'delivery'), 0) * 0.6
+                      + COALESCE(AVG(cr.score) FILTER (WHERE cr.rating_scope = 'monthly'), 0) * 0.4
+                    )::numeric, 1) AS overall_score
+                  FROM customer_ratings cr
+                  WHERE cr.merchant_id = $1
+                    AND cr.customer_id IN (SELECT id FROM base)
+                  GROUP BY cr.customer_id
+                )`
+                : '';
+            const ratingSelect = useRatings
+                ? `COALESCE(rating_agg.delivery_avg, 0) AS delivery_avg,
+                   COALESCE(rating_agg.monthly_avg, 0) AS monthly_avg,
+                   COALESCE(rating_agg.overall_score, 0) AS overall_score`
+                : `0::numeric AS delivery_avg,
+                   0::numeric AS monthly_avg,
+                   0::numeric AS overall_score`;
+            const ratingJoin = useRatings ? 'LEFT JOIN rating_agg ON rating_agg.customer_id = base.id' : '';
 
-        // Get customers with total debt (avoid GROUP BY on base.*)
-        const buildQuery = (useRatings, clause) => (
-            useRatings
-                ? `WITH base AS (
-                     SELECT c.*
-                     FROM customers c
-                     WHERE ${clause}
-                     ORDER BY c.created_at DESC
-                     LIMIT $${params.length + 1} OFFSET $${params.length + 2}
-                   )
-                   SELECT base.*,
-                          COALESCE(loan_agg.total_debt, 0) AS total_debt,
-                          COALESCE(loan_agg.total_loans, 0) AS total_loans,
-                          COALESCE(loan_agg.paid_loans, 0) AS paid_loans,
-                          COALESCE(loan_agg.raised_loans, 0) AS raised_loans,
-                          COALESCE(loan_agg.active_loans, 0) AS active_loans,
-                          rating_agg.delivery_avg,
-                          rating_agg.monthly_avg,
-                          rating_agg.overall_score
-                   FROM base
-                   LEFT JOIN LATERAL (
-                     SELECT
-                       COALESCE(SUM(CASE WHEN l.status = 'Active' AND l.deleted_at IS NULL THEN l.amount ELSE 0 END), 0) as total_debt,
-                       COALESCE(COUNT(l.id) FILTER (WHERE l.deleted_at IS NULL), 0) as total_loans,
-                       COALESCE(COUNT(l.id) FILTER (WHERE l.deleted_at IS NULL AND l.status = 'Paid'), 0) as paid_loans,
-                       COALESCE(COUNT(l.id) FILTER (WHERE l.deleted_at IS NULL AND l.status = 'Raised'), 0) as raised_loans,
-                       COALESCE(COUNT(l.id) FILTER (WHERE l.deleted_at IS NULL AND l.status = 'Active'), 0) as active_loans
-                     FROM loans l
-                     WHERE l.customer_id = base.id AND l.merchant_id = base.merchant_id
-                   ) loan_agg ON true
-                   LEFT JOIN LATERAL (
-                     SELECT
-                       ROUND(COALESCE(AVG(cr.score) FILTER (WHERE cr.rating_scope = 'delivery'), 0)::numeric, 1) AS delivery_avg,
-                       ROUND(COALESCE(AVG(cr.score) FILTER (WHERE cr.rating_scope = 'monthly'), 0)::numeric, 1) AS monthly_avg,
-                       ROUND((
-                         COALESCE(AVG(cr.score) FILTER (WHERE cr.rating_scope = 'delivery'), 0) * 0.6
-                         + COALESCE(AVG(cr.score) FILTER (WHERE cr.rating_scope = 'monthly'), 0) * 0.4
-                       )::numeric, 1) AS overall_score
-                     FROM customer_ratings cr
-                     WHERE cr.merchant_id = base.merchant_id AND cr.customer_id = base.id
-                   ) rating_agg ON true
-                   ORDER BY base.created_at DESC`
-                : `WITH base AS (
-                     SELECT c.*
-                     FROM customers c
-                     WHERE ${clause}
-                     ORDER BY c.created_at DESC
-                     LIMIT $${params.length + 1} OFFSET $${params.length + 2}
-                   )
-                   SELECT base.*,
-                          COALESCE(loan_agg.total_debt, 0) AS total_debt,
-                          COALESCE(loan_agg.total_loans, 0) AS total_loans,
-                          COALESCE(loan_agg.paid_loans, 0) AS paid_loans,
-                          COALESCE(loan_agg.raised_loans, 0) AS raised_loans,
-                          COALESCE(loan_agg.active_loans, 0) AS active_loans,
-                          0::numeric AS delivery_avg,
-                          0::numeric AS monthly_avg,
-                          0::numeric AS overall_score
-                   FROM base
-                   LEFT JOIN LATERAL (
-                     SELECT
-                       COALESCE(SUM(CASE WHEN l.status = 'Active' AND l.deleted_at IS NULL THEN l.amount ELSE 0 END), 0) as total_debt,
-                       COALESCE(COUNT(l.id) FILTER (WHERE l.deleted_at IS NULL), 0) as total_loans,
-                       COALESCE(COUNT(l.id) FILTER (WHERE l.deleted_at IS NULL AND l.status = 'Paid'), 0) as paid_loans,
-                       COALESCE(COUNT(l.id) FILTER (WHERE l.deleted_at IS NULL AND l.status = 'Raised'), 0) as raised_loans,
-                       COALESCE(COUNT(l.id) FILTER (WHERE l.deleted_at IS NULL AND l.status = 'Active'), 0) as active_loans
-                     FROM loans l
-                     WHERE l.customer_id = base.id AND l.merchant_id = base.merchant_id
-                   ) loan_agg ON true
-                   ORDER BY base.created_at DESC`
-        );
+            return `
+                WITH base AS (
+                    SELECT c.*,
+                           COUNT(*) OVER() AS total_count
+                    FROM customers c
+                    WHERE ${clause}
+                    ORDER BY c.created_at DESC
+                    LIMIT $${params.length + 1} OFFSET $${params.length + 2}
+                ),
+                loan_agg AS (
+                    SELECT
+                        l.customer_id,
+                        COALESCE(SUM(CASE WHEN l.status = 'Active' ${loanDeletedClause} THEN l.amount ELSE 0 END), 0) AS total_debt,
+                        COALESCE(COUNT(l.id) FILTER (WHERE ${loanDeletedClause ? 'l.deleted_at IS NULL' : 'true'}), 0) AS total_loans,
+                        COALESCE(COUNT(l.id) FILTER (WHERE ${loanDeletedClause ? "l.deleted_at IS NULL AND l.status = 'Paid'" : "l.status = 'Paid'"}), 0) AS paid_loans,
+                        COALESCE(COUNT(l.id) FILTER (WHERE ${loanDeletedClause ? "l.deleted_at IS NULL AND l.status = 'Raised'" : "l.status = 'Raised'"}), 0) AS raised_loans,
+                        COALESCE(COUNT(l.id) FILTER (WHERE ${loanDeletedClause ? "l.deleted_at IS NULL AND l.status = 'Active'" : "l.status = 'Active'"}), 0) AS active_loans
+                    FROM loans l
+                    WHERE l.merchant_id = $1
+                      ${loanDeletedClause}
+                      AND l.customer_id IN (SELECT id FROM base)
+                    GROUP BY l.customer_id
+                )
+                ${ratingCte}
+                SELECT base.*,
+                       COALESCE(loan_agg.total_debt, 0) AS total_debt,
+                       COALESCE(loan_agg.total_loans, 0) AS total_loans,
+                       COALESCE(loan_agg.paid_loans, 0) AS paid_loans,
+                       COALESCE(loan_agg.raised_loans, 0) AS raised_loans,
+                       COALESCE(loan_agg.active_loans, 0) AS active_loans,
+                       ${ratingSelect}
+                FROM base
+                LEFT JOIN loan_agg ON loan_agg.customer_id = base.id
+                ${ratingJoin}
+                ORDER BY base.created_at DESC
+            `;
+        };
 
         const runQuery = async (query, queryParams) => {
             if (useFreshClient) {
@@ -293,13 +320,19 @@ router.get('/', checkPermission('can_view_customers'), async (req, res) => {
             );
         } catch (err) {
             console.warn('Customers query fallback:', err?.message || err);
+            useFreshClient = true;
             result = await runWithFreshClient(
-                buildQuery(false, whereClauseFallback),
+                buildQuery(false, whereClauseFallback, false),
                 [...params, limitNumber, offset]
             );
         }
 
+        const totalCount = result.rows.length
+            ? parseInt(result.rows[0].total_count || 0, 10)
+            : 0;
+
         const enriched = result.rows.map((c) => {
+            const { total_count, ...rest } = c;
             const paid = parseInt(c.paid_loans || 0, 10);
             const raised = parseInt(c.raised_loans || 0, 10);
             const active = parseInt(c.active_loans || 0, 10);
@@ -311,7 +344,7 @@ router.get('/', checkPermission('can_view_customers'), async (req, res) => {
             const customer_status = raised > 0 ? 'raised' : active > 0 ? 'unpaid' : total > 0 ? 'paid' : 'new';
 
             return enrichCustomer({
-                ...c,
+                ...rest,
                 rating: Number(rating.toFixed(1)),
                 rating_source: manualRating > 0 ? 'manual' : 'system',
                 customer_status
@@ -328,10 +361,9 @@ router.get('/', checkPermission('can_view_customers'), async (req, res) => {
             }
         };
 
-        const ttlSeconds = Number(process.env.CUSTOMERS_LIST_CACHE_TTL || 30);
         if (useCache) {
             await setCache(cacheKey, payload, Number.isFinite(ttlSeconds) ? ttlSeconds : 30);
-            res.set('Cache-Control', 'private, max-age=30');
+            res.set('Cache-Control', cacheHeader);
         }
 
         res.json(payload);

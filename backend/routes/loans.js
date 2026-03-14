@@ -745,57 +745,43 @@ router.get('/', checkPermission('can_view_loans'), async (req, res) => {
         };
         const cacheKey = `loans:list:${req.merchantId}:${Buffer.from(JSON.stringify(cacheParams)).toString('base64')}`;
         const useCache = !isMockedDb;
+        const ttlSeconds = Number(process.env.LOANS_LIST_CACHE_TTL || 120);
+        const swrSeconds = Math.min(60, Math.max(10, Math.floor(ttlSeconds / 2)));
+        const cacheHeader = `private, max-age=${ttlSeconds}, stale-while-revalidate=${swrSeconds}, stale-if-error=300`;
         if (useCache) {
             const cached = await getCache(cacheKey);
             if (cached) {
-                res.set('Cache-Control', 'private, max-age=30');
+                res.set('Cache-Control', cacheHeader);
                 return res.json(cached);
             }
         }
 
-        const hasSearch = Boolean(search);
-        const countQuery = hasSearch
-            ? `SELECT COUNT(*) FROM loans l LEFT JOIN customers c ON l.customer_id = c.id WHERE ${where}`
-            : `SELECT COUNT(*) FROM loans l WHERE ${where}`;
-        const dataQuery = hasSearch
-            ? `SELECT l.id, l.amount, l.principal_amount, l.profit_percentage, l.receipt_number, l.receipt_image_url,
-                      l.status, l.transaction_date, l.created_at, l.notes,
-                      c.id AS customer_id, c.full_name AS customer_name,
-                      c.national_id, c.mobile_number,
-                      l.najiz_case_number, l.najiz_case_amount, l.najiz_status,
-                      l.najiz_collected_amount, l.is_najiz_case,
-                      l.najiz_plaintiff_name, l.najiz_plaintiff_national_id, l.najiz_raised_date
-               FROM loans l LEFT JOIN customers c ON l.customer_id = c.id
-               WHERE ${where}
-               ORDER BY l.created_at DESC
-               LIMIT $${i} OFFSET $${i + 1}`
-            : `WITH base AS (
-                   SELECT l.id, l.amount, l.principal_amount, l.profit_percentage, l.receipt_number, l.receipt_image_url,
-                          l.status, l.transaction_date, l.created_at, l.notes,
-                          l.customer_id,
-                          l.najiz_case_number, l.najiz_case_amount, l.najiz_status,
-                          l.najiz_collected_amount, l.is_najiz_case,
-                          l.najiz_plaintiff_name, l.najiz_plaintiff_national_id, l.najiz_raised_date
-                   FROM loans l
-                   WHERE ${where}
-                   ORDER BY l.created_at DESC
-                   LIMIT $${i} OFFSET $${i + 1}
-               )
-               SELECT base.*,
-                      c.id AS customer_id, c.full_name AS customer_name,
-                      c.national_id, c.mobile_number
-               FROM base
-               LEFT JOIN customers c ON base.customer_id = c.id
-               ORDER BY base.created_at DESC`;
+        const dataQuery = `
+            SELECT l.id, l.amount, l.principal_amount, l.profit_percentage, l.receipt_number, l.receipt_image_url,
+                   l.status, l.transaction_date, l.created_at, l.notes,
+                   l.customer_id,
+                   c.full_name AS customer_name,
+                   c.national_id, c.mobile_number,
+                   l.najiz_case_number, l.najiz_case_amount, l.najiz_status,
+                   l.najiz_collected_amount, l.is_najiz_case,
+                   l.najiz_plaintiff_name, l.najiz_plaintiff_national_id, l.najiz_raised_date,
+                   COUNT(*) OVER() AS total_count
+            FROM loans l
+            LEFT JOIN customers c ON l.customer_id = c.id
+            WHERE ${where}
+            ORDER BY l.created_at DESC
+            LIMIT $${i} OFFSET $${i + 1}
+        `;
 
-        const [countRes, dataRes] = await Promise.all([
-            req.dbClient.query(countQuery, params),
-            req.dbClient.query(dataQuery, [...params, limitNumber, offset])
-        ]);
-
-        const totalCount = parseInt(countRes.rows[0].count);
+        const dataRes = await req.dbClient.query(dataQuery, [...params, limitNumber, offset]);
+        const totalCount = dataRes.rows.length
+            ? parseInt(dataRes.rows[0].total_count || 0, 10)
+            : 0;
         const payload = {
-            loans: dataRes.rows.map(enrichLoan),
+            loans: dataRes.rows.map((row) => {
+                const { total_count, ...rest } = row;
+                return enrichLoan(rest);
+            }),
             pagination: {
                 page: pageNumber,
                 limit: limitNumber,
@@ -804,10 +790,9 @@ router.get('/', checkPermission('can_view_loans'), async (req, res) => {
             }
         };
 
-        const ttlSeconds = Number(process.env.LOANS_LIST_CACHE_TTL || 30);
         if (useCache) {
             await setCache(cacheKey, payload, Number.isFinite(ttlSeconds) ? ttlSeconds : 30);
-            res.set('Cache-Control', 'private, max-age=30');
+            res.set('Cache-Control', cacheHeader);
         }
         res.json(payload);
     } catch (err) {

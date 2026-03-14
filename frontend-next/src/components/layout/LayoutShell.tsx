@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { toast } from 'sonner';
-import { reportsAPI } from '@/lib/api';
+import { customersAPI, loansAPI, reportsAPI } from '@/lib/api';
 import {
   IconAnalytics,
   IconDashboard,
@@ -234,6 +234,20 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
       routes.forEach((path) => router.prefetch(path));
     });
   }, [router, pathname, visibleNavItems]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const connection = (navigator as any)?.connection;
+    if (connection?.saveData) return;
+    if (typeof connection?.effectiveType === 'string' && ['slow-2g', '2g'].includes(connection.effectiveType)) {
+      return;
+    }
+
+    return scheduleIdle(() => {
+      customersAPI.prefetchAll({ page: 1, limit: 15 });
+      loansAPI.prefetchAll({ page: 1, limit: 20 });
+    });
+  }, []);
 
   useEffect(() => {
     const runMonthEndNotice = async () => {
