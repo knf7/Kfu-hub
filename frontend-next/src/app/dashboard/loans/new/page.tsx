@@ -11,6 +11,8 @@ type ExistingCustomer = {
     national_id: string;
 };
 
+const INTEREST_OPTIONS = [10, 20, 30];
+
 export default function AddLoanPage() {
     const router = useRouter();
     const attachmentRef = useRef<HTMLInputElement>(null);
@@ -29,6 +31,7 @@ export default function AddLoanPage() {
         interestAmount: '',
         totalAmount: '',
         applyInterest: true,
+        interestRate: 30,
         bondNumber: '',
         bondDate: new Date().toISOString().split('T')[0],
         receiptImageUrl: '',
@@ -38,16 +41,23 @@ export default function AddLoanPage() {
         najiz_status: 'قيد التنفيذ'
     });
 
-    const calculateInterest = (principal: string, applyInterest = formData.applyInterest) => {
+    const calculateInterest = (
+        principal: string,
+        applyInterest = formData.applyInterest,
+        interestRate = formData.interestRate
+    ) => {
         const principalNum = parseFloat(principal) || 0;
-        const interest = applyInterest ? principalNum * 0.30 : 0;
+        const rate = applyInterest ? interestRate : 0;
+        const interest = principalNum * (rate / 100);
         const total = principalNum + interest;
 
         setFormData(prev => ({
             ...prev,
             principalAmount: principal,
             interestAmount: interest.toFixed(2),
-            totalAmount: total.toFixed(2)
+            totalAmount: total.toFixed(2),
+            applyInterest,
+            interestRate
         }));
     };
 
@@ -78,7 +88,7 @@ export default function AddLoanPage() {
                 customerId: customer.id,
                 amount: parseFloat(formData.totalAmount),
                 principal_amount: parseFloat(formData.principalAmount),
-                profit_percentage: formData.applyInterest ? 30 : 0,
+                profit_percentage: formData.applyInterest ? formData.interestRate : 0,
                 receiptNumber: formData.bondNumber,
                 receiptImageUrl: formData.receiptImageUrl || null,
                 transactionDate: formData.bondDate,
@@ -222,17 +232,33 @@ export default function AddLoanPage() {
                                         checked={formData.applyInterest}
                                         onChange={(e) => {
                                             const nextApplyInterest = e.target.checked;
-                                            calculateInterest(formData.principalAmount, nextApplyInterest);
-                                            setFormData((prev) => ({ ...prev, applyInterest: nextApplyInterest }));
+                                            calculateInterest(formData.principalAmount, nextApplyInterest, formData.interestRate);
                                         }}
                                     />
-                                    <span>تطبيق نسبة الفائدة 30%</span>
+                                    <span>تطبيق نسبة الفائدة</span>
                                 </label>
+                                <select
+                                    className="input interest-select"
+                                    value={formData.interestRate}
+                                    onChange={(e) => {
+                                        const nextRate = Number(e.target.value) || 0;
+                                        calculateInterest(formData.principalAmount, formData.applyInterest, nextRate);
+                                    }}
+                                    disabled={!formData.applyInterest}
+                                >
+                                    {INTEREST_OPTIONS.map((rate) => (
+                                        <option key={rate} value={rate}>{rate}%</option>
+                                    ))}
+                                </select>
                             </div>
                         </div>
                         <div className="form-row">
                             <div className="form-group">
-                                <label>{formData.applyInterest ? 'مبلغ الفائدة (30%)' : 'مبلغ الفائدة (معطلة)'}</label>
+                                <label>
+                                    {formData.applyInterest
+                                        ? `مبلغ الفائدة (${formData.interestRate}%)`
+                                        : 'مبلغ الفائدة (معطلة)'}
+                                </label>
                                 <input
                                     type="text"
                                     className="input calculated numeric-field"
@@ -363,7 +389,11 @@ export default function AddLoanPage() {
                 <div className="loan-info-card">
                     <h3>💡 معلومات القرض</h3>
                     <ul>
-                        <li>{formData.applyInterest ? 'يتم حساب الفائدة تلقائياً بنسبة 30%' : 'تم تعطيل الفائدة لهذا القرض'}</li>
+                        <li>
+                            {formData.applyInterest
+                                ? `يتم حساب الفائدة تلقائياً بنسبة ${formData.interestRate}%`
+                                : 'تم تعطيل الفائدة لهذا القرض'}
+                        </li>
                         <li>رقم الهوية يجب أن يكون 10 أرقام</li>
                         <li>رقم الجوال يجب أن يبدأ بـ 05</li>
                         <li>يمكنك رفع القضية عبر ناجز مباشرة</li>

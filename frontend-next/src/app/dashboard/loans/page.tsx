@@ -12,6 +12,12 @@ import MoneyRain from '@/components/layout/MoneyRain';
 import { useDataSync } from '@/hooks/useDataSync';
 import './loans.css';
 
+const INTEREST_OPTIONS = [10, 20, 30];
+
+const normalizeInterestRate = (rate: number) => (
+    INTEREST_OPTIONS.includes(rate) ? rate : INTEREST_OPTIONS[0]
+);
+
 const LoansPage = () => {
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -572,7 +578,7 @@ const AddLoanModal = ({ onClose, onSuccess }: any) => {
     const [formData, setFormData] = useState({
         customerId: '',
         principal_amount: '',
-        profit_percentage: 0,
+        profit_percentage: INTEREST_OPTIONS[2] ?? INTEREST_OPTIONS[0],
         status: 'Active',
         receiptNumber: '',
         transactionDate: new Date().toISOString().split('T')[0],
@@ -637,7 +643,14 @@ const AddLoanModal = ({ onClose, onSuccess }: any) => {
                         </div>
                         <div className="form-group" style={{ width: '120px' }}>
                             <label>نسبة الفائدة %</label>
-                            <input type="number" min="0" max="100" value={formData.profit_percentage} onChange={(e) => setFormData({ ...formData, profit_percentage: parseInt(e.target.value) || 0 })} />
+                            <select
+                                value={formData.profit_percentage}
+                                onChange={(e) => setFormData({ ...formData, profit_percentage: Number(e.target.value) || 0 })}
+                            >
+                                {INTEREST_OPTIONS.map((rate) => (
+                                    <option key={rate} value={rate}>{rate}%</option>
+                                ))}
+                            </select>
                         </div>
                     </div>
                     <div className="form-group">
@@ -673,7 +686,7 @@ const AddLoanModal = ({ onClose, onSuccess }: any) => {
 const EditLoanModal = ({ loan, onClose, onSuccess }: any) => {
     const [formData, setFormData] = useState({
         principal_amount: loan.principal_amount || loan.amount || '',
-        profit_percentage: loan.profit_percentage || 0,
+        profit_percentage: normalizeInterestRate(Number(loan.profit_percentage || 0)),
         status: loan.status || 'Active',
         receiptNumber: loan.receipt_number || '',
         transactionDate: loan.transaction_date ? new Date(loan.transaction_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
@@ -725,7 +738,14 @@ const EditLoanModal = ({ loan, onClose, onSuccess }: any) => {
                         </div>
                         <div className="form-group" style={{ width: '120px' }}>
                             <label>نسبة الفائدة %</label>
-                            <input type="number" min="0" max="100" value={formData.profit_percentage} onChange={(e) => setFormData({ ...formData, profit_percentage: parseInt(e.target.value) || 0 })} />
+                            <select
+                                value={formData.profit_percentage}
+                                onChange={(e) => setFormData({ ...formData, profit_percentage: Number(e.target.value) || 0 })}
+                            >
+                                {INTEREST_OPTIONS.map((rate) => (
+                                    <option key={rate} value={rate}>{rate}%</option>
+                                ))}
+                            </select>
                         </div>
                     </div>
                     <div className="form-group">

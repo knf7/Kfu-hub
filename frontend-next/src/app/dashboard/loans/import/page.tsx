@@ -31,6 +31,7 @@ const FIELD_LABELS: Record<FieldKey, string> = {
 };
 
 const REQUIRED_FIELDS: FieldKey[] = ['nationalId', 'fullName', 'amount'];
+const INTEREST_OPTIONS = [10, 20, 30];
 
 function findColumn(row: any, candidates: string[]) {
     const keys = Object.keys(row);
@@ -335,14 +336,15 @@ export default function ExcelUploadPage() {
                         </div>
                         <div className="import-setting">
                             <label className="section-label">نسبة الفائدة %</label>
-                            <input
-                                type="number"
-                                min="0"
-                                max="100"
+                            <select
                                 value={profitPercentage}
-                                onChange={(e) => setProfitPercentage(Math.max(0, Math.min(100, Number(e.target.value) || 0)))}
+                                onChange={(e) => setProfitPercentage(Number(e.target.value) || 0)}
                                 disabled={!applyInterest}
-                            />
+                            >
+                                {INTEREST_OPTIONS.map((rate) => (
+                                    <option key={rate} value={rate}>{rate}%</option>
+                                ))}
+                            </select>
                         </div>
                     </div>
                 </div>

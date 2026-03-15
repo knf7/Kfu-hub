@@ -224,16 +224,17 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
   }, [pathname, hasPageAccess, router, visibleNavItems]);
 
   useEffect(() => {
-    if (!visibleNavItems.length) return;
-    const routes = visibleNavItems
-      .map((item) => item.path)
-      .filter((path) => path !== pathname)
-      .slice(0, 4);
+    if (!visibleNavItems.length && !visibleQuickActions.length) return;
+    const routeSet = new Set<string>();
+    visibleNavItems.forEach((item) => routeSet.add(item.path));
+    visibleQuickActions.forEach((item) => routeSet.add(item.path));
+    if (pathname) routeSet.delete(pathname);
+    const routes = Array.from(routeSet);
     if (routes.length === 0) return;
     return scheduleIdle(() => {
       routes.forEach((path) => router.prefetch(path));
     });
-  }, [router, pathname, visibleNavItems]);
+  }, [router, pathname, visibleNavItems, visibleQuickActions]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;

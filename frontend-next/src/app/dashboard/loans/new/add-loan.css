@@ -92,6 +92,11 @@
     background: color-mix(in srgb, var(--bg-card) 92%, transparent);
 }
 
+.interest-select {
+    margin-top: 8px;
+    max-width: 180px;
+}
+
 .interest-toggle input {
     width: 16px;
     height: 16px;
