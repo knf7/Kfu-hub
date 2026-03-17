@@ -230,6 +230,11 @@ const ensureCustomerRatingsTable = async (client) => {
 
 // GET /api/customers - List all customers
 router.get('/', checkPermission('can_view_customers'), async (req, res) => {
+    const requestCacheState = {
+        key: null,
+        header: null,
+        useCache: false
+    };
     try {
         const { page = 1, limit = 20, search, skip_count, include_stats } = req.query;
         const pageNumber = Math.max(1, parseInt(page, 10) || 1);
@@ -268,15 +273,64 @@ router.get('/', checkPermission('can_view_customers'), async (req, res) => {
         const ttlSeconds = Number(process.env.CUSTOMERS_LIST_CACHE_TTL || 120);
         const swrSeconds = Math.min(60, Math.max(10, Math.floor(ttlSeconds / 2)));
         const cacheHeader = `private, max-age=${ttlSeconds}, stale-while-revalidate=${swrSeconds}, stale-if-error=300`;
+        requestCacheState.key = cacheKey;
+        requestCacheState.header = cacheHeader;
+        requestCacheState.useCache = useCache;
         if (useCache) {
-            const cached = await getCache(cacheKey);
-            if (cached) {
-                res.set('Cache-Control', cacheHeader);
-                return res.json(cached);
+            try {
+                const cached = await getCache(cacheKey);
+                if (cached) {
+                    res.set('Cache-Control', cacheHeader);
+                    return res.json(cached);
+                }
+            } catch (cacheErr) {
+                console.warn('Customers cache read failed:', cacheErr?.message || cacheErr);
             }
         }
 
-        const runQuery = async (query, queryParams) => req.dbClient.query(query, queryParams);
+        const isTransactionAbort = (err) => {
+            if (!err) return false;
+            if (err.code === '25P02') return true;
+            return String(err.message || '').toLowerCase().includes('current transaction is aborted');
+        };
+
+        const runFreshQuery = async (query, queryParams) => {
+            if (!db.pool || typeof db.pool.connect !== 'function') {
+                return db.query(query, queryParams);
+            }
+            const freshClient = await db.pool.connect();
+            try {
+                await freshClient.query('BEGIN');
+                await freshClient.query('SELECT set_config($1, $2, $3)', ['app.merchant_id', req.merchantId, true]);
+                const result = await freshClient.query(query, queryParams);
+                await freshClient.query('COMMIT');
+                return result;
+            } catch (err) {
+                try { await freshClient.query('ROLLBACK'); } catch { }
+                throw err;
+            } finally {
+                freshClient.release(true);
+            }
+        };
+
+        const runQuery = async (query, queryParams) => {
+            if (isMockedDb || !req.dbClient?.query) {
+                return db.query(query, queryParams);
+            }
+            if (req.dbClientBroken) {
+                return runFreshQuery(query, queryParams);
+            }
+            try {
+                return await req.dbClient.query(query, queryParams);
+            } catch (err) {
+                if (!isTransactionAbort(err)) {
+                    throw err;
+                }
+                req.dbClientBroken = true;
+                console.warn('Customers query aborted; retrying on fresh connection.');
+                return runFreshQuery(query, queryParams);
+            }
+        };
 
         const countSelect = skipCount ? '' : ', COUNT(*) OVER() AS total_count';
         const queryLimit = skipCount ? limitNumber + 1 : limitNumber;
@@ -415,13 +469,30 @@ router.get('/', checkPermission('can_view_customers'), async (req, res) => {
         };
 
         if (useCache) {
-            await setCache(cacheKey, payload, Number.isFinite(ttlSeconds) ? ttlSeconds : 30);
-            res.set('Cache-Control', cacheHeader);
+            try {
+                await setCache(cacheKey, payload, Number.isFinite(ttlSeconds) ? ttlSeconds : 30);
+                res.set('Cache-Control', cacheHeader);
+            } catch (cacheErr) {
+                console.warn('Customers cache write failed:', cacheErr?.message || cacheErr);
+            }
         }
 
         res.json(payload);
     } catch (err) {
         console.error('Get customers error:', err);
+        if (requestCacheState.useCache && requestCacheState.key) {
+            try {
+                const cached = await getCache(requestCacheState.key);
+                if (cached) {
+                    if (requestCacheState.header) {
+                        res.set('Cache-Control', requestCacheState.header);
+                    }
+                    return res.json(cached);
+                }
+            } catch {
+                // ignore cache fallback errors
+            }
+        }
         res.status(500).json({ error: 'Failed to fetch customers' });
     }
 });

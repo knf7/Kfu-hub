@@ -167,7 +167,7 @@ const injectRlsContext = async (req, res, next) => {
             res.removeListener('close', cleanup);
             try {
                 if (!useSessionMode) {
-                    if (res.statusCode >= 400) {
+                    if (req.dbClientBroken || res.statusCode >= 400) {
                         await client.query('ROLLBACK');
                     } else {
                         await client.query('COMMIT');
