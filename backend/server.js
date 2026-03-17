@@ -28,6 +28,7 @@ if (process.env.SENTRY_DSN) {
 const authRoutes = require('./routes/auth');
 const loansRoutes = require('./routes/loans');
 const customersRoutes = require('./routes/customers');
+const perfRoutes = require('./routes/perf');
 const { bindTransport } = require('./utils/emailWorker');
 const mailer = require('./utils/mailer');
 
@@ -336,6 +337,7 @@ app.use('/api/webhooks', require('./routes/webhooks'));
 app.use('/api/auth', authRoutes);
 app.use('/api/loans', loansRoutes);
 app.use('/api/customers', customersRoutes);
+app.use('/api/perf', perfRoutes);
 app.use('/api/reports', reportsRoutes);
 app.use('/api/subscription', subscriptionRoutes);
 app.use('/api/settings', require('./routes/settings'));
