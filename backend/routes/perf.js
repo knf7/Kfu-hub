@@ -1,6 +1,6 @@
 const express = require('express');
 const { performance } = require('perf_hooks');
-const { authenticateToken, injectMerchantId } = require('../middleware/auth');
+const { authenticateToken, injectMerchantId, checkPermission } = require('../middleware/auth');
 const { getCache, setCache } = require('../utils/cache');
 
 const router = express.Router();
@@ -18,7 +18,31 @@ const buildBaseUrl = (req) => {
     return host ? `${proto}://${host}` : '';
 };
 
-router.get('/dashboard', async (req, res) => {
+const requestTiming = async (url, headers) => {
+    if (typeof fetch === 'function') {
+        const response = await fetch(url, { headers });
+        await response.text();
+        return response.status;
+    }
+
+    const { URL } = require('url');
+    const parsed = new URL(url);
+    const httpModule = parsed.protocol === 'https:' ? require('https') : require('http');
+    return new Promise((resolve) => {
+        const req = httpModule.request(
+            parsed,
+            { method: 'GET', headers },
+            (resp) => {
+                resp.on('data', () => {});
+                resp.on('end', () => resolve(resp.statusCode || 0));
+            }
+        );
+        req.on('error', () => resolve(0));
+        req.end();
+    });
+};
+
+router.get('/dashboard', checkPermission('can_view_dashboard'), async (req, res) => {
     try {
         const cacheKey = `perf:dashboard:${req.merchantId}`;
         const cached = await getCache(cacheKey);
@@ -56,10 +80,7 @@ router.get('/dashboard', async (req, res) => {
             const start = performance.now();
             let status = 0;
             try {
-                const response = await fetch(url, { headers });
-                status = response.status;
-                // Consume response body to finish the request.
-                await response.text();
+                status = await requestTiming(url, headers);
             } catch (err) {
                 status = 0;
             }

@@ -428,4 +428,8 @@ export const reportsAPI = {
     getAIAnalysis: (params: any) => cachedGet('/reports/ai-analysis', { params }),
 };
 
+export const perfAPI = {
+    getDashboard: () => api.get('/perf/dashboard'),
+};
+
 export default api;
