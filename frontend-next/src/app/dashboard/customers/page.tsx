@@ -31,6 +31,14 @@ export default function CustomersPage() {
     const requestIdRef = useRef(0);
     const statsRequestRef = useRef(0);
 
+    const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+    const shouldRetry = (err: any) => {
+        const status = err?.response?.status;
+        if (!status) return true;
+        if (status === 401 || status === 403) return false;
+        return status >= 500 || status === 429;
+    };
+
     const loadCustomerStats = useCallback(async (list: any[]) => {
         const ids = list.map((c) => c.id).filter(Boolean);
         if (ids.length === 0) return;
@@ -80,7 +88,19 @@ export default function CustomersPage() {
         }
         setErrorMsg('');
         try {
-            const res = await customersAPI.getAll(params);
+            const performRequest = async (attempt = 0): Promise<any> => {
+                try {
+                    return await customersAPI.getAll(params);
+                } catch (err) {
+                    if (shouldRetry(err) && attempt < 2) {
+                        await delay(400 * (attempt + 1));
+                        return performRequest(attempt + 1);
+                    }
+                    throw err;
+                }
+            };
+
+            const res = await performRequest();
             if (requestId !== requestIdRef.current) return;
             const d = res.data;
             const list = d.customers || [];
@@ -102,17 +122,20 @@ export default function CustomersPage() {
                 loadCustomerStats(nextCustomers);
             }
         } catch (err: any) {
-            setCustomers([]);
-            setTotalPages(1);
+            const hasExisting = customers.length > 0;
+            if (!hasExisting) {
+                setCustomers([]);
+                setTotalPages(1);
+            }
             const status = err?.response?.status;
             if (status === 401) {
                 setErrorMsg('انتهت الجلسة. الرجاء تسجيل الدخول من جديد.');
             } else if (status === 403) {
                 setErrorMsg('غير مصرح. تأكد من صلاحيات الحساب أو الاشتراك.');
             } else if (status >= 500) {
-                setErrorMsg('خطأ في الخادم. حاول مرة أخرى بعد قليل.');
+                setErrorMsg(hasExisting ? 'تعذر تحديث القائمة الآن، تم عرض آخر بيانات محفوظة.' : 'خطأ في الخادم. حاول مرة أخرى بعد قليل.');
             } else {
-                setErrorMsg('تعذر الاتصال بالخادم. تحقق من إعدادات الـ API أو أعد المحاولة.');
+                setErrorMsg(hasExisting ? 'تعذر الاتصال بالخادم الآن، تم عرض آخر بيانات محفوظة.' : 'تعذر الاتصال بالخادم. تحقق من إعدادات الـ API أو أعد المحاولة.');
             }
         }
         finally { setLoading(false); }
