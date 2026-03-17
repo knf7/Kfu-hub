@@ -278,8 +278,15 @@ router.get('/dashboard', checkPermission('can_view_dashboard'), async (req, res)
             )
         ]);
 
-        const paid = parseFloat(rateRes.rows[0].paid);
-        const total = parseFloat(rateRes.rows[0].total);
+        const debtRow = debtRes?.rows?.[0] || {};
+        const profitRow = profitRes?.rows?.[0] || {};
+        const customersRow = custRes?.rows?.[0] || {};
+        const monthRow = monthRes?.rows?.[0] || {};
+        const rateRow = rateRes?.rows?.[0] || {};
+        const overdueRow = overdueRes?.rows?.[0] || {};
+        const raisedRow = raisedRes?.rows?.[0] || {};
+        const paid = parseFloat(rateRow.paid || 0);
+        const total = parseFloat(rateRow.total || 0);
         const rate = total > 0 ? parseFloat(((paid / total) * 100).toFixed(2)) : 0;
         const najizSummaryRow = najizSummaryRes.rows[0] || {};
         const totalRaisedAmount = Number(najizSummaryRow.total_raised_amount || 0);
@@ -288,14 +295,14 @@ router.get('/dashboard', checkPermission('can_view_dashboard'), async (req, res)
 
         const payload = {
             metrics: {
-                totalDebt: parseFloat(debtRes.rows[0].total_debt),
-                totalProfit: parseFloat(profitRes.rows[0].total_profit || 0),
-                totalCustomers: parseInt(custRes.rows[0].total_customers),
-                activeCustomers: parseInt(custRes.rows[0].active_customers),
-                loansThisMonth: parseInt(monthRes.rows[0].count),
+                totalDebt: parseFloat(debtRow.total_debt || 0),
+                totalProfit: parseFloat(profitRow.total_profit || 0),
+                totalCustomers: parseInt(customersRow.total_customers || 0, 10),
+                activeCustomers: parseInt(customersRow.active_customers || 0, 10),
+                loansThisMonth: parseInt(monthRow.count || 0, 10),
                 collectionRate: rate,
-                overdueCustomers: parseInt(overdueRes.rows[0].overdue_count),
-                raisedCount: parseInt(raisedRes.rows[0].count),
+                overdueCustomers: parseInt(overdueRow.overdue_count || 0, 10),
+                raisedCount: parseInt(raisedRow.count || 0, 10),
                 najizRaisedAmount: totalRaisedAmount,
                 najizCollectedAmount: totalCollectedAmount,
                 najizRemainingAmount: remainingAmount
