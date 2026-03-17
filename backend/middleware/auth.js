@@ -135,6 +135,15 @@ const injectRlsContext = async (req, res, next) => {
     }
 
     let client;
+    const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.SERVERLESS);
+    const useSessionMode = process.env.RLS_SESSION_MODE === 'true' || isServerless;
+    const setRlsContext = async (dbClient, merchantId, isLocal) => {
+        await dbClient.query('SELECT set_config($1, $2, $3)', ['app.merchant_id', merchantId, isLocal]);
+    };
+    const resetRlsContext = async (dbClient) => {
+        await dbClient.query('SELECT set_config($1, $2, $3)', ['app.merchant_id', '', false]);
+    };
+
     try {
         client = await db.pool.connect();
         if (!client || typeof client.query !== 'function') {
@@ -142,9 +151,14 @@ const injectRlsContext = async (req, res, next) => {
             if (client && typeof client.release === 'function') client.release();
             return next();
         }
-        await client.query('BEGIN');
-        // SET LOCAL is scoped to the transaction only - failsafe against connection pooling leaks
-        await client.query(`SET LOCAL app.merchant_id = '${req.user.merchantId}'`);
+
+        if (useSessionMode) {
+            await setRlsContext(client, req.user.merchantId, false);
+        } else {
+            await client.query('BEGIN');
+            // SET LOCAL is scoped to the transaction only - failsafe against connection pooling leaks
+            await setRlsContext(client, req.user.merchantId, true);
+        }
 
         req.dbClient = client;
 
@@ -152,12 +166,20 @@ const injectRlsContext = async (req, res, next) => {
             res.removeListener('finish', cleanup);
             res.removeListener('close', cleanup);
             try {
-                // If the response failed, we might want to rollback, 
-                // but for simple GETs/updates, COMMIT is usually fine unless 
-                // we're doing multi-step mutations.
-                await client.query('COMMIT');
+                if (!useSessionMode) {
+                    if (res.statusCode >= 400) {
+                        await client.query('ROLLBACK');
+                    } else {
+                        await client.query('COMMIT');
+                    }
+                } else {
+                    await resetRlsContext(client);
+                }
             } catch (err) {
                 console.error('RLS Transaction Commit Error:', err);
+                try {
+                    if (!useSessionMode) await client.query('ROLLBACK');
+                } catch { }
             } finally {
                 client.release(true);
             }
@@ -169,7 +191,7 @@ const injectRlsContext = async (req, res, next) => {
         next();
     } catch (err) {
         if (client) {
-            try { await client.query('ROLLBACK'); } catch (e) { }
+            try { await client.query('ROLLBACK'); } catch { }
             client.release();
         }
         console.error('RLS Injection Failure:', err);

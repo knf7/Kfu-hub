@@ -242,7 +242,7 @@ router.get('/', checkPermission('can_view_customers'), async (req, res) => {
         const isMockedDb = Boolean(req.dbClient?.query?._isMockFunction);
         let hasRatingsTable = false;
         if (includeStats && process.env.NODE_ENV !== 'test' && !isMockedDb) {
-            hasRatingsTable = await resolveRatingsTable();
+            hasRatingsTable = await resolveRatingsTable(req.dbClient);
         }
 
         let whereClause = 'c.merchant_id = $1 AND c.deleted_at IS NULL';
@@ -455,7 +455,7 @@ router.get('/stats', checkPermission('can_view_customers'), async (req, res) => 
         const isMockedDb = Boolean(req.dbClient?.query?._isMockFunction);
         let hasRatingsTable = false;
         if (process.env.NODE_ENV !== 'test' && !isMockedDb) {
-            hasRatingsTable = await resolveRatingsTable();
+            hasRatingsTable = await resolveRatingsTable(req.dbClient);
         }
 
         const loanAggQuery = `

@@ -1,6 +1,12 @@
 const { Pool } = require('pg');
 const logger = require('../utils/logger');
 
+const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.SERVERLESS);
+const defaultPoolMax = isServerless ? 3 : 20;
+const poolMax = Number(process.env.DB_POOL_MAX || defaultPoolMax);
+const idleTimeoutMillis = Number(process.env.DB_IDLE_TIMEOUT_MS || (isServerless ? 10000 : 30000));
+const connectionTimeoutMillis = Number(process.env.DB_CONN_TIMEOUT_MS || (isServerless ? 5000 : 10000));
+
 const pool = new Pool({
     host: process.env.DB_HOST || 'postgres',
     port: process.env.DB_PORT || 5432,
@@ -8,9 +14,10 @@ const pool = new Pool({
     user: process.env.DB_USER || 'postgres',
     password: process.env.DB_PASSWORD,
     ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: false },
-    max: Number(process.env.DB_POOL_MAX || (process.env.VERCEL ? 5 : 20)),
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 10000,
+    max: poolMax,
+    idleTimeoutMillis,
+    connectionTimeoutMillis,
+    allowExitOnIdle: isServerless
 });
 
 pool.on('connect', () => {
