@@ -26,11 +26,15 @@ describe('Reports / Analytics Controller', () => {
             db.query
                 .mockResolvedValueOnce({ rows: [{ session_version: 1 }] }) // Auth
                 .mockResolvedValueOnce({ rows: [{ total_debt: '5000' }] }) // Debt
+                .mockResolvedValueOnce({ rows: [{ total_profit: '250' }] }) // Profit
                 .mockResolvedValueOnce({ rows: [{ total_customers: 10, active_customers: 5 }] }) // Customers
                 .mockResolvedValueOnce({ rows: [{ count: 2 }] }) // monthRes
                 .mockResolvedValueOnce({ rows: [{ paid: '2000', total: '7000' }] }) // rateRes
                 .mockResolvedValueOnce({ rows: [{ overdue_count: 1 }] }) // overdueRes
-                .mockResolvedValueOnce({ rows: [] }); // recentRes
+                .mockResolvedValueOnce({ rows: [{ count: 2 }] }) // raisedRes
+                .mockResolvedValueOnce({ rows: [] }) // recentRes
+                .mockResolvedValueOnce({ rows: [{}] }) // najizSummaryRes
+                .mockResolvedValueOnce({ rows: [] }); // najizDetailsRes
 
             const res = await request(app)
                 .get('/api/reports/dashboard')
@@ -45,10 +49,14 @@ describe('Reports / Analytics Controller', () => {
             db.query
                 .mockResolvedValueOnce({ rows: [{ session_version: 1 }] }) // Auth
                 .mockResolvedValueOnce({ rows: [{ total_debt: '0' }] })
+                .mockResolvedValueOnce({ rows: [{ total_profit: '0' }] })
                 .mockResolvedValueOnce({ rows: [{ total_customers: 0, active_customers: 0 }] })
                 .mockResolvedValueOnce({ rows: [{ count: 0 }] })
                 .mockResolvedValueOnce({ rows: [{ paid: '0', total: '0' }] }) // Total = 0
                 .mockResolvedValueOnce({ rows: [{ overdue_count: 0 }] })
+                .mockResolvedValueOnce({ rows: [{ count: 0 }] })
+                .mockResolvedValueOnce({ rows: [] })
+                .mockResolvedValueOnce({ rows: [{}] })
                 .mockResolvedValueOnce({ rows: [] });
 
             const res = await request(app)
