@@ -1,7 +1,8 @@
 -- Create a unified view for authentication to allow login via email or username across merchants and employees
 DROP VIEW IF EXISTS auth_lookup_view CASCADE;
 
-CREATE VIEW auth_lookup_view AS
+CREATE VIEW auth_lookup_view
+WITH (security_invoker = true) AS
 SELECT 
     id,
     id as merchant_id,

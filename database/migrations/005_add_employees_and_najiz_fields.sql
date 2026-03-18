@@ -36,7 +36,8 @@ CREATE TRIGGER update_merchant_employees_updated_at BEFORE UPDATE ON merchant_em
 
 -- Update merchant_dashboard_metrics view to include Cases and Delayed
 DROP VIEW IF EXISTS merchant_dashboard_metrics CASCADE;
-CREATE VIEW merchant_dashboard_metrics AS
+CREATE VIEW merchant_dashboard_metrics
+WITH (security_invoker = true) AS
 SELECT 
     m.id AS merchant_id,
     m.business_name,

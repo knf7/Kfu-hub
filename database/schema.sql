@@ -220,7 +220,8 @@ CREATE TRIGGER update_loans_updated_at BEFORE UPDATE ON loans
 -- =====================================================
 
 -- View: Merchant Dashboard Metrics
-CREATE OR REPLACE VIEW merchant_dashboard_metrics AS
+CREATE OR REPLACE VIEW merchant_dashboard_metrics
+WITH (security_invoker = true) AS
 SELECT 
     m.id AS merchant_id,
     m.business_name,
@@ -235,7 +236,8 @@ LEFT JOIN loans l ON l.merchant_id = m.id
 GROUP BY m.id, m.business_name;
 
 -- View: Customer Debt Summary
-CREATE OR REPLACE VIEW customer_debt_summary AS
+CREATE OR REPLACE VIEW customer_debt_summary
+WITH (security_invoker = true) AS
 SELECT 
     c.id AS customer_id,
     c.merchant_id,
