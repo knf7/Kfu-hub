@@ -32,12 +32,25 @@ const destructiveActionLimiter = rateLimit({
 
 
 // ─── Enrichment helpers ───
-const enrichLoan = (l) => ({
-    ...l,
-    whatsappLink: l.mobile_number ? `https://wa.me/${l.mobile_number.replace(/\D/g, '')}` : null,
-    najizLink: l.national_id ? `https://www.najiz.sa/applications/landing/verification?id=${encodeURIComponent(l.national_id)}` : null,
-    najiz_collected_amount: l.najiz_collected_amount || 0
-});
+const normalizeLoanField = (value) => {
+    if (value === undefined || value === null) return '';
+    return String(value).trim();
+};
+
+const enrichLoan = (l) => {
+    const mobileNumber = normalizeLoanField(l.mobile_number);
+    const nationalId = normalizeLoanField(l.national_id);
+    const sanitizedMobile = mobileNumber.replace(/\D/g, '');
+
+    return {
+        ...l,
+        mobile_number: mobileNumber || l.mobile_number,
+        national_id: nationalId || l.national_id,
+        whatsappLink: sanitizedMobile ? `https://wa.me/${sanitizedMobile}` : null,
+        najizLink: nationalId ? `https://www.najiz.sa/applications/landing/verification?id=${encodeURIComponent(nationalId)}` : null,
+        najiz_collected_amount: l.najiz_collected_amount || 0
+    };
+};
 
 const { checkPlanLimit } = require('../middleware/planLimits');
 
@@ -735,7 +748,7 @@ router.get('/', checkPermission('can_view_loans'), async (req, res) => {
             if (searchValue) {
                 const isNumeric = /^[0-9]+$/.test(searchValue);
                 if (isNumeric) {
-                    conds.push(`(c.national_id LIKE $${i} OR c.mobile_number LIKE $${i})`);
+                    conds.push(`(c.national_id::text LIKE $${i} OR c.mobile_number::text LIKE $${i})`);
                     params.push(`${searchValue}%`);
                 } else {
                     conds.push(`(c.full_name ILIKE $${i})`);

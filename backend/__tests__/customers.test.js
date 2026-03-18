@@ -26,7 +26,7 @@ describe('Customers Controller', () => {
                 .mockResolvedValueOnce({
                     rows: [{
                         id: '1', full_name: 'John Doe', national_id: '1111111111',
-                        mobile_number: '0501111111', total_debt: 1000, total_loans: 1, total_count: '1'
+                        mobile_number: 501111111, total_debt: 1000, total_loans: 1, total_count: '1'
                     }]
                 });
 
@@ -37,6 +37,7 @@ describe('Customers Controller', () => {
             expect(res.statusCode).toEqual(200);
             expect(res.body.customers[0].full_name).toBe('John Doe');
             expect(res.body.customers[0]).toHaveProperty('whatsappLink');
+            expect(res.body.customers[0].whatsappLink).toBe('https://wa.me/501111111');
         });
     });
 

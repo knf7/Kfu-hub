@@ -82,39 +82,32 @@ describe('Reports / Analytics Controller', () => {
         });
 
         it('should provide rich insights for enterprise users', async () => {
-            db.query.mockImplementation((query) => {
-                const sql = String(query || '');
-                if (sql.includes('session_version')) {
-                    return Promise.resolve({ rows: [{ session_version: 1 }] });
-                }
-                if (sql.includes('subscription_plan')) {
-                    return Promise.resolve({ rows: [{ subscription_plan: 'Enterprise' }] });
-                }
-                if (sql.includes('total_portfolio')) {
-                    return Promise.resolve({
-                        rows: [{
-                            total_portfolio: '10000', paid_amount: '9000', active_amount: '1000',
-                            total_loans: 10, paid_count: 9, active_count: 1
-                        }]
-                    });
-                }
-                if (sql.includes('transaction_date >= CURRENT_DATE - INTERVAL')) {
-                    return Promise.resolve({ rows: [{ month: '2026-02', total: '5000' }, { month: '2026-01', total: '4000' }] });
-                }
-                if (sql.includes('days_overdue')) {
-                    return Promise.resolve({ rows: [] });
-                }
-                if (sql.includes('ORDER BY total DESC') && sql.includes('LIMIT 1')) {
-                    return Promise.resolve({ rows: [{ month: '2026-02', total: '5000' }] });
-                }
-                if (sql.includes('STDDEV') || sql.includes('avg_amount')) {
-                    return Promise.resolve({ rows: [{ avg_amount: 1000, max_amount: 1000, min_amount: 100, stddev_amount: 10 }] });
-                }
-                if (sql.includes('high_risk')) {
-                    return Promise.resolve({ rows: [{ high_risk: 0, medium_risk: 0, low_risk: 1 }] });
-                }
-                return Promise.resolve({ rows: [] });
-            });
+            db.query.mockReset();
+            db.query
+                .mockResolvedValueOnce({ rows: [{ session_version: 1 }] }) // Auth
+                .mockResolvedValueOnce({ rows: [{ subscription_plan: 'Enterprise' }] }) // Plan check
+                .mockResolvedValueOnce({
+                    rows: [{
+                        total_portfolio: '10000',
+                        paid_amount: '9000',
+                        active_amount: '1000',
+                        cancelled_amount: '0',
+                        total_loans: 10,
+                        paid_count: 9,
+                        active_count: 1,
+                        cancelled_count: 0
+                    }]
+                })
+                .mockResolvedValueOnce({
+                    rows: [
+                        { month: '2026-02', total: '5000', count: 5 },
+                        { month: '2026-01', total: '4000', count: 4 }
+                    ]
+                })
+                .mockResolvedValueOnce({ rows: [] })
+                .mockResolvedValueOnce({ rows: [{ month: '2026-02', total: '5000' }] })
+                .mockResolvedValueOnce({ rows: [{ avg_amount: 1000, max_amount: 1000, min_amount: 100, stddev_amount: 10 }] })
+                .mockResolvedValueOnce({ rows: [{ high_risk: 0, medium_risk: 0, low_risk: 1, high_risk_amount: 0 }] });
 
             const res = await request(app)
                 .get('/api/reports/ai-analysis')

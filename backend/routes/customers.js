@@ -49,7 +49,7 @@ const buildCustomerSearchFilter = (searchValue, paramIndex) => {
     const isNumeric = /^[0-9]+$/.test(normalized);
     if (isNumeric) {
         return {
-            clause: `(c.national_id LIKE $${paramIndex} OR c.mobile_number LIKE $${paramIndex})`,
+            clause: `(c.national_id::text LIKE $${paramIndex} OR c.mobile_number::text LIKE $${paramIndex})`,
             params: [`${normalized}%`]
         };
     }
@@ -93,11 +93,23 @@ router.use(injectMerchantId);
 router.use(injectRlsContext);
 
 // Virtual/helper: WhatsApp and Najiz links for Customer (no ORM; applied when returning rows)
-const enrichCustomer = (c) => ({
-    ...c,
-    whatsappLink: c.mobile_number ? `https://wa.me/${c.mobile_number.replace(/\D/g, '')}` : null,
-    najizLink: c.national_id ? `https://www.najiz.sa/applications/landing/verification?id=${encodeURIComponent(c.national_id)}` : null
-});
+const normalizeCustomerField = (value) => {
+    if (value === undefined || value === null) return '';
+    return String(value).trim();
+};
+
+const enrichCustomer = (c) => {
+    const mobileNumber = normalizeCustomerField(c.mobile_number);
+    const nationalId = normalizeCustomerField(c.national_id);
+    const sanitizedMobile = mobileNumber.replace(/\D/g, '');
+    return {
+        ...c,
+        mobile_number: mobileNumber || c.mobile_number,
+        national_id: nationalId || c.national_id,
+        whatsappLink: sanitizedMobile ? `https://wa.me/${sanitizedMobile}` : null,
+        najizLink: nationalId ? `https://www.najiz.sa/applications/landing/verification?id=${encodeURIComponent(nationalId)}` : null
+    };
+};
 
 
 // Validation schema
