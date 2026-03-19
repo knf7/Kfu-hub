@@ -31,6 +31,7 @@ export default function CustomersPage() {
     const requestIdRef = useRef(0);
     const statsRequestRef = useRef(0);
     const customersRef = useRef<any[]>(initialCache?.customers || []);
+    const hasVisibleCustomersRef = useRef(Boolean(initialCache?.customers?.length));
 
     const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
     const shouldRetry = (err: any) => {
@@ -82,6 +83,7 @@ export default function CustomersPage() {
             const nextCustomers = includeStats
                 ? cachedList
                 : cachedList.map((c: any) => ({ ...c, stats_pending: true }));
+            hasVisibleCustomersRef.current = hasVisibleCustomersRef.current || nextCustomers.length > 0;
             setCustomers(nextCustomers);
             setPage(requestPage);
             setTotalPages(cached.pagination?.totalPages ?? 1);
@@ -113,6 +115,7 @@ export default function CustomersPage() {
             const nextCustomers = includeStats
                 ? list
                 : list.map((c: any) => ({ ...c, stats_pending: true }));
+            hasVisibleCustomersRef.current = hasVisibleCustomersRef.current || nextCustomers.length > 0;
             setCustomers(nextCustomers);
             setPage(requestPage);
             const nextTotalPages = d.pagination?.totalPages ?? 1;
@@ -129,7 +132,7 @@ export default function CustomersPage() {
             }
         } catch (err: any) {
             if (requestId !== requestIdRef.current) return;
-            const hasExisting = customersRef.current.length > 0 || usedCache;
+            const hasExisting = hasVisibleCustomersRef.current || customersRef.current.length > 0 || usedCache;
             if (!hasExisting) {
                 setCustomers([]);
                 setTotalPages(1);

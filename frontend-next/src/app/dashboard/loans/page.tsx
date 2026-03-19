@@ -498,9 +498,14 @@ const LoansPage = () => {
                 </>
             )}
 
-            {editingLoan && <EditLoanModal loan={editingLoan} onClose={() => setEditingLoan(null)} onSuccess={async () => {
+            {editingLoan && <EditLoanModal loan={editingLoan} onClose={() => setEditingLoan(null)} onSuccess={async (updatedLoan?: any) => {
                 setEditingLoan(null);
-                await fetchLoans();
+                if (updatedLoan?.id) {
+                    setLoans((prev) => prev.map((loan) => (
+                        loan.id === updatedLoan.id ? { ...loan, ...updatedLoan } : loan
+                    )));
+                }
+                scheduleRefresh(700);
                 toast.success('تم تحديث بيانات القرض');
             }} />}
             {showImportModal && <ImportLoansModal onClose={() => setShowImportModal(false)} onSuccess={async () => {
@@ -736,8 +741,21 @@ const EditLoanModal = ({ loan, onClose, onSuccess }: any) => {
                     (1 + (Number(formData.profit_percentage) || 0) / 100)
                 ).toFixed(2)
             };
-            await loansAPI.update(loan.id, payload);
-            onSuccess();
+            const response: any = await loansAPI.update(loan.id, payload);
+            const updatedLoan = response?.data?.loan || response?.loan || {
+                ...loan,
+                ...payload,
+                amount: payload.amount,
+                principal_amount: payload.principal_amount,
+                profit_percentage: payload.profit_percentage,
+                status: payload.status,
+                receipt_number: payload.receipt_number,
+                transaction_date: payload.transaction_date,
+                notes: payload.notes,
+                najiz_case_number: payload.najiz_case_number,
+                najiz_status: payload.najiz_status
+            };
+            onSuccess(updatedLoan);
         } catch (error: any) {
             toast.error(error?.response?.data?.error || 'فشل تعديل القرض');
         } finally {
