@@ -19,6 +19,23 @@ const normalizeInterestRate = (rate: number) => (
     INTEREST_OPTIONS.includes(rate) ? rate : INTEREST_OPTIONS[0]
 );
 
+const buildLoanQueryParams = (filters: any, page: number, limit: number) => {
+    const searchValue = String(filters.search || '').trim();
+    const params: Record<string, any> = {
+        page,
+        limit
+    };
+
+    if (searchValue) params.search = searchValue;
+    if (filters.status) params.status = filters.status;
+    if (filters.startDate) params.startDate = filters.startDate;
+    if (filters.endDate) params.endDate = filters.endDate;
+    if (filters.delayed) params.delayed = true;
+    if (searchValue) params.skip_count = true;
+
+    return params;
+};
+
 const LoansPage = () => {
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -36,7 +53,14 @@ const LoansPage = () => {
         delayed: false
     });
     const debouncedSearch = useDebounce(filters.search, 350);
-    const deferredFilters = useDeferredValue({ ...filters, search: debouncedSearch });
+    const filterSnapshot = useMemo(() => ({
+        search: debouncedSearch,
+        status: filters.status,
+        startDate: filters.startDate,
+        endDate: filters.endDate,
+        delayed: filters.delayed
+    }), [debouncedSearch, filters.status, filters.startDate, filters.endDate, filters.delayed]);
+    const deferredFilters = useDeferredValue(filterSnapshot);
     const [, startTransition] = useTransition();
     const [pagination, setPagination] = useState<{ page: number; limit: number; totalPages: number }>(() => ({
         page: initialCache?.pagination?.page ?? 1,
@@ -71,15 +95,7 @@ const LoansPage = () => {
         const requestId = ++requestIdRef.current;
         try {
             const requestPage = pageOverride ?? pagination.page;
-            const searchValue = String(deferredFilters.search || '').trim();
-            const skipCount = Boolean(searchValue);
-            const params = {
-                ...deferredFilters,
-                search: searchValue || undefined,
-                page: requestPage,
-                limit: pagination.limit,
-                skip_count: skipCount || undefined
-            };
+            const params = buildLoanQueryParams(deferredFilters, requestPage, pagination.limit);
             const cached = loansAPI.peekAll(params);
             if (cached) {
                 setLoans(cached.loans || []);
@@ -114,7 +130,7 @@ const LoansPage = () => {
         } finally {
             setLoading(false);
         }
-    }, [deferredFilters, pagination.limit, pagination.page, loans.length]);
+    }, [deferredFilters, pagination.limit, pagination.page]);
 
     useEffect(() => {
         fetchLoans();
