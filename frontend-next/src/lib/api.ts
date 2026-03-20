@@ -290,6 +290,7 @@ export const loansAPI = {
         const res = await api.post('/loans', data);
         clearCacheByPrefix('/loans');
         clearCacheByPrefix('/reports');
+        clearCacheByPrefix('/najiz');
         clearDashboardCache();
         emitDataSync({ scopes: ['loans', 'customers', 'dashboard', 'reports', 'analytics', 'najiz'], reason: 'loan-created' });
         return res;
@@ -298,6 +299,7 @@ export const loansAPI = {
         const res = await api.patch(`/loans/${id}`, data);
         clearCacheByPrefix('/loans');
         clearCacheByPrefix('/reports');
+        clearCacheByPrefix('/najiz');
         clearDashboardCache();
         emitDataSync({ scopes: ['loans', 'customers', 'dashboard', 'reports', 'analytics', 'najiz'], reason: 'loan-updated' });
         return res;
@@ -306,14 +308,25 @@ export const loansAPI = {
         const res = await api.patch(`/loans/${id}/status`, { status, ...extra });
         clearCacheByPrefix('/loans');
         clearCacheByPrefix('/reports');
+        clearCacheByPrefix('/najiz');
         clearDashboardCache();
         emitDataSync({ scopes: ['loans', 'customers', 'dashboard', 'reports', 'analytics', 'najiz'], reason: 'loan-status' });
+        return res;
+    },
+    updateNajizCase: async (id: string, data: any = {}) => {
+        const res = await api.patch(`/loans/${id}/najiz`, data);
+        clearCacheByPrefix('/loans');
+        clearCacheByPrefix('/reports');
+        clearCacheByPrefix('/najiz');
+        clearDashboardCache();
+        emitDataSync({ scopes: ['loans', 'customers', 'dashboard', 'reports', 'analytics', 'najiz'], reason: 'najiz-updated' });
         return res;
     },
     delete: async (id: string) => {
         const res = await api.delete(`/loans/${id}`);
         clearCacheByPrefix('/loans');
         clearCacheByPrefix('/reports');
+        clearCacheByPrefix('/najiz');
         clearDashboardCache();
         emitDataSync({ scopes: ['loans', 'customers', 'dashboard', 'reports', 'analytics', 'najiz'], reason: 'loan-deleted' });
         return res;
@@ -332,6 +345,7 @@ export const loansAPI = {
         });
         clearCacheByPrefix('/loans');
         clearCacheByPrefix('/reports');
+        clearCacheByPrefix('/najiz');
         clearDashboardCache();
         emitDataSync({ scopes: ['loans', 'customers', 'dashboard', 'reports', 'analytics', 'najiz'], reason: 'loan-upload' });
         return res;
@@ -342,6 +356,7 @@ export const loansAPI = {
         });
         clearCacheByPrefix('/loans');
         clearCacheByPrefix('/reports');
+        clearCacheByPrefix('/najiz');
         clearDashboardCache();
         emitDataSync({ scopes: ['loans', 'customers', 'dashboard', 'reports', 'analytics', 'najiz'], reason: 'loan-attachment' });
         return res;
