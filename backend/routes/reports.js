@@ -102,8 +102,9 @@ router.get('/dashboard', checkPermission('can_view_dashboard'), async (req, res)
         const columnFlags = await getLoanColumnFlags();
         const loanSql = buildLoanSqlHelpers(columnFlags);
         const isMockedDb = Boolean(db.query && db.query._isMockFunction);
+        const forceFresh = req.query._t !== undefined;
         const cacheKey = `reports:dashboard:${id}`;
-        const useCache = !isMockedDb;
+        const useCache = !isMockedDb && !forceFresh;
         const ttlSeconds = Number(process.env.REPORTS_DASHBOARD_TTL || process.env.REPORTS_CACHE_TTL || 300);
         const swrSeconds = Math.min(60, Math.max(10, Math.floor(ttlSeconds / 2)));
         const cacheHeader = `private, max-age=${ttlSeconds}, stale-while-revalidate=${swrSeconds}, stale-if-error=300`;
@@ -325,6 +326,8 @@ router.get('/dashboard', checkPermission('can_view_dashboard'), async (req, res)
         if (useCache) {
             await setCache(cacheKey, payload, Number.isFinite(ttlSeconds) ? ttlSeconds : 30);
             res.set('Cache-Control', cacheHeader);
+        } else if (forceFresh) {
+            res.set('Cache-Control', 'no-store');
         }
         res.json(payload);
     } catch (err) {
@@ -342,9 +345,10 @@ router.get('/analytics', checkPermission('can_view_analytics'), async (req, res)
         const columnFlags = await getLoanColumnFlags();
         const loanSql = buildLoanSqlHelpers(columnFlags);
         const isMockedDb = Boolean(db.query && db.query._isMockFunction);
+        const forceFresh = req.query._t !== undefined;
         const interval = req.query.interval || 'month';
         const cacheKey = `reports:analytics:${id}:${interval}`;
-        const useCache = !isMockedDb;
+        const useCache = !isMockedDb && !forceFresh;
         const ttlSeconds = Number(process.env.REPORTS_ANALYTICS_TTL || 300);
         const swrSeconds = Math.min(90, Math.max(20, Math.floor(ttlSeconds / 2)));
         const cacheHeader = `private, max-age=${ttlSeconds}, stale-while-revalidate=${swrSeconds}, stale-if-error=300`;
@@ -530,6 +534,8 @@ router.get('/analytics', checkPermission('can_view_analytics'), async (req, res)
         if (useCache) {
             await setCache(cacheKey, payload, Number.isFinite(ttlSeconds) ? ttlSeconds : 60);
             res.set('Cache-Control', cacheHeader);
+        } else if (forceFresh) {
+            res.set('Cache-Control', 'no-store');
         }
         res.json(payload);
     } catch (err) {
@@ -546,6 +552,7 @@ router.get('/ai-analysis', checkPermission('can_view_analytics'), async (req, re
     try {
         const id = req.merchantId;
         const isMockedDb = Boolean(db.query && db.query._isMockFunction);
+        const forceFresh = req.query._t !== undefined;
 
         // 1. Verify SaaS Tier (must be enterprise)
         const merchantRes = await db.query('SELECT subscription_plan FROM merchants WHERE id = $1', [id]);
@@ -559,7 +566,7 @@ router.get('/ai-analysis', checkPermission('can_view_analytics'), async (req, re
         }
 
         const cacheKey = `reports:ai:${id}`;
-        const useCache = !isMockedDb;
+        const useCache = !isMockedDb && !forceFresh;
         const ttlSeconds = Number(process.env.REPORTS_AI_TTL || 600);
         const swrSeconds = Math.min(300, Math.max(60, Math.floor(ttlSeconds / 2)));
         const cacheHeader = `private, max-age=${ttlSeconds}, stale-while-revalidate=${swrSeconds}, stale-if-error=600`;
@@ -869,6 +876,8 @@ router.get('/ai-analysis', checkPermission('can_view_analytics'), async (req, re
         if (useCache) {
             await setCache(cacheKey, payload, Number.isFinite(ttlSeconds) ? ttlSeconds : 300);
             res.set('Cache-Control', cacheHeader);
+        } else if (forceFresh) {
+            res.set('Cache-Control', 'no-store');
         }
 
         res.json(payload);

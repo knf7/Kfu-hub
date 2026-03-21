@@ -48,23 +48,14 @@ export default function NajizCasesPage() {
         return Number.isFinite(parsed) ? parsed : 0;
     };
 
-    useEffect(() => {
-        fetchCases();
-    }, []);
-
-    const scheduleRefresh = useCallback((delay = 250) => {
-        if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
-        refreshTimerRef.current = setTimeout(() => fetchCases(), delay);
-    }, []);
-
-    useDataSync(() => {
-        scheduleRefresh(200);
-    }, { scopes: ['loans', 'dashboard', 'reports', 'najiz'], debounceMs: 200 });
-
-    const fetchCases = async () => {
+    const fetchCases = useCallback(async (forceFresh = false) => {
         try {
             setLoading(true);
-            const response = await loansAPI.getAll({ is_najiz_case: true, limit: 100, skip_count: true });
+            const params: any = { is_najiz_case: true, limit: 100, skip_count: true };
+            if (forceFresh) {
+                params._t = Date.now();
+            }
+            const response = await loansAPI.getAll(params);
             const data = response.data || response;
             setCases(
                 (data.loans || []).map((loan: NajizCase) => ({
@@ -78,7 +69,20 @@ export default function NajizCasesPage() {
         } finally {
             setLoading(false);
         }
-    };
+    }, []);
+
+    useEffect(() => {
+        fetchCases();
+    }, [fetchCases]);
+
+    const scheduleRefresh = useCallback((delay = 250, forceFresh = false) => {
+        if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+        refreshTimerRef.current = setTimeout(() => fetchCases(forceFresh), delay);
+    }, [fetchCases]);
+
+    useDataSync(() => {
+        scheduleRefresh(200, true);
+    }, { scopes: ['loans', 'dashboard', 'reports', 'najiz'], debounceMs: 200 });
 
     const totalCases = cases.length;
     const totalRaisedAmount = cases.reduce(
@@ -142,7 +146,7 @@ export default function NajizCasesPage() {
                     }
                     : currentLoan
             ));
-            scheduleRefresh(150);
+            scheduleRefresh(500, true);
         } catch {
             toast.error('فشل حفظ التحديثات');
             return;
@@ -181,7 +185,7 @@ export default function NajizCasesPage() {
                     }
                     : currentLoan
             ));
-            scheduleRefresh(150);
+            scheduleRefresh(500, true);
             toast.success('تم تحديث الحالة إلى: تم السداد');
         } catch {
             toast.error('فشل في التحديث');

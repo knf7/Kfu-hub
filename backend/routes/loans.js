@@ -768,11 +768,12 @@ const loanSchema = Joi.object({
 // GET /api/loans — List with pagination & filters
 router.get('/', checkPermission('can_view_loans'), async (req, res) => {
     try {
-        const { page = 1, limit = 20, status, customerId, startDate, endDate, search, is_najiz_case, skip_count } = req.query;
+        const { page = 1, limit = 20, status, customerId, startDate, endDate, search, is_najiz_case, skip_count, _t } = req.query;
         const pageNumber = Math.max(1, parseInt(page, 10) || 1);
         const limitNumber = Math.min(100, parseInt(limit, 10) || 20);
         const offset = (pageNumber - 1) * limitNumber;
         const skipCount = skip_count === 'true' || req.query.skipCount === 'true';
+        const forceFresh = _t !== undefined;
         let conds = ['l.merchant_id = $1', 'l.deleted_at IS NULL'];
         let params = [req.merchantId];
         let i = 2;
@@ -820,7 +821,7 @@ router.get('/', checkPermission('can_view_loans'), async (req, res) => {
             skip_count: skipCount
         };
         const cacheKey = `loans:list:${req.merchantId}:${Buffer.from(JSON.stringify(cacheParams)).toString('base64')}`;
-        const useCache = !isMockedDb;
+        const useCache = !isMockedDb && !forceFresh;
         const ttlSeconds = Number(process.env.LOANS_LIST_CACHE_TTL || 120);
         const swrSeconds = Math.min(60, Math.max(10, Math.floor(ttlSeconds / 2)));
         const cacheHeader = `private, max-age=${ttlSeconds}, stale-while-revalidate=${swrSeconds}, stale-if-error=300`;
@@ -878,6 +879,8 @@ router.get('/', checkPermission('can_view_loans'), async (req, res) => {
         if (useCache) {
             await setCache(cacheKey, payload, Number.isFinite(ttlSeconds) ? ttlSeconds : 30);
             res.set('Cache-Control', cacheHeader);
+        } else if (forceFresh) {
+            res.set('Cache-Control', 'no-store');
         }
         res.json(payload);
     } catch (err) {
