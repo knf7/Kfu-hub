@@ -38,6 +38,7 @@ export default function NajizCasesPage() {
     const [uploadingAttachmentId, setUploadingAttachmentId] = useState<string | null>(null);
     const [confirmPaidCaseId, setConfirmPaidCaseId] = useState<string | null>(null);
     const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const requestIdRef = useRef(0);
     const parseMoneyInput = (value: string | number | null | undefined) => {
         if (value === null || value === undefined || value === '') return null;
         const raw = String(value);
@@ -52,13 +53,17 @@ export default function NajizCasesPage() {
     };
 
     const fetchCases = useCallback(async (forceFresh = false) => {
+        const requestId = ++requestIdRef.current;
         try {
-            setLoading(true);
+            if (cases.length === 0) {
+                setLoading(true);
+            }
             const params: any = { is_najiz_case: true, limit: 100, skip_count: true };
             if (forceFresh) {
                 params._t = Date.now();
             }
             const response = await loansAPI.getAll(params);
+            if (requestId !== requestIdRef.current) return;
             const data = response.data || response;
             setCases(
                 (data.loans || []).map((loan: NajizCase) => ({
@@ -68,11 +73,14 @@ export default function NajizCasesPage() {
                 }))
             );
         } catch (error) {
+            if (requestId !== requestIdRef.current) return;
             console.error('Failed to fetch Najiz cases:', error);
         } finally {
-            setLoading(false);
+            if (requestId === requestIdRef.current) {
+                setLoading(false);
+            }
         }
-    }, []);
+    }, [cases.length]);
 
     useEffect(() => {
         fetchCases();
@@ -134,7 +142,18 @@ export default function NajizCasesPage() {
                 najiz_raised_date: loan.najiz_raised_date,
                 najiz_case_number: loan.najiz_case_number
             });
-            const updatedLoan = response?.data?.loan ?? null;
+            let updatedLoan = response?.data?.loan ?? null;
+            const serverCollected = Number(updatedLoan?.najiz_collected_amount ?? NaN);
+            const shouldVerifyRead = updatedLoan === null
+                || (collectedAmount !== null && Number.isFinite(collectedAmount) && serverCollected !== Number(collectedAmount));
+            if (shouldVerifyRead) {
+                try {
+                    const verifyRes = await loansAPI.getById(loan.id);
+                    updatedLoan = verifyRes?.data || updatedLoan;
+                } catch {
+                    // keep optimistic value if verification fetch fails
+                }
+            }
             setCases(prev => prev.map((currentLoan) =>
                 currentLoan.id === loan.id
                     ? {
@@ -146,7 +165,7 @@ export default function NajizCasesPage() {
                     }
                     : currentLoan
             ));
-            scheduleRefresh(500, true);
+            scheduleRefresh(900, true);
         } catch {
             toast.error('فشل حفظ التحديثات');
             return;
@@ -184,7 +203,7 @@ export default function NajizCasesPage() {
                     }
                     : currentLoan
             ));
-            scheduleRefresh(500, true);
+            scheduleRefresh(900, true);
             toast.success('تم تحديث الحالة إلى: تم السداد');
         } catch {
             toast.error('فشل في التحديث');

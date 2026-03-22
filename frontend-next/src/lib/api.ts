@@ -4,6 +4,7 @@ const API_CACHE_PREFIX = 'api-cache:';
 const API_CACHE_TTL_MS = 1000 * 60 * 5;
 const API_CACHE_STALE_MS = 1000 * 60 * 20;
 const memoryCache = new Map<string, { data: any; savedAt: number }>();
+const inflightGets = new Map<string, Promise<any>>();
 export const DASHBOARD_DIRTY_KEY = 'dashboard-dirty';
 const DATA_SYNC_STORAGE_KEY = 'aseel-data-sync';
 const DATA_SYNC_CHANNEL = 'aseel-data-sync';
@@ -221,15 +222,25 @@ const cachedGet = async (url: string, config: any = {}) => {
         }
         return Promise.resolve({ data: cached.data } as any);
     }
-    const res = await api.get(url, config);
-    writeCached(key, res.data);
-    return res;
+    const existing = inflightGets.get(key);
+    if (existing) return existing;
+    const requestPromise = api.get(url, config)
+        .then((res) => {
+            writeCached(key, res.data);
+            return res;
+        })
+        .finally(() => {
+            inflightGets.delete(key);
+        });
+    inflightGets.set(key, requestPromise);
+    return requestPromise;
 };
 
 const warmCache = async (url: string, config: any = {}, force = false) => {
     const key = buildCacheKey(url, config?.params);
     const cached = readCached(key, true);
     if (!force && cached !== undefined && !cached?.stale) return;
+    if (inflightGets.has(key)) return;
     try {
         const res = await api.get(url, config);
         writeCached(key, res.data);
