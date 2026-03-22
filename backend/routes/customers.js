@@ -9,6 +9,29 @@ const router = express.Router();
 
 const RATINGS_TABLE_CACHE_TTL_MS = 1000 * 60 * 5;
 let ratingsTableCache = { value: null, checkedAt: 0 };
+const HOT_CUSTOMERS_CACHE_TTL_MS = 1000 * 60 * 15;
+const HOT_CUSTOMERS_CACHE_MAX_ITEMS = 500;
+const hotCustomersCache = new Map();
+
+const readHotCustomersCache = (key) => {
+    if (!key) return null;
+    const entry = hotCustomersCache.get(key);
+    if (!entry) return null;
+    if ((Date.now() - entry.savedAt) > HOT_CUSTOMERS_CACHE_TTL_MS) {
+        hotCustomersCache.delete(key);
+        return null;
+    }
+    return entry.payload;
+};
+
+const writeHotCustomersCache = (key, payload) => {
+    if (!key || !payload) return;
+    if (hotCustomersCache.size >= HOT_CUSTOMERS_CACHE_MAX_ITEMS) {
+        const oldestKey = hotCustomersCache.keys().next().value;
+        if (oldestKey) hotCustomersCache.delete(oldestKey);
+    }
+    hotCustomersCache.set(key, { payload, savedAt: Date.now() });
+};
 
 const resolveRatingsTable = async (client) => {
     const now = Date.now();
@@ -311,7 +334,8 @@ router.get('/', checkPermission('can_view_customers'), async (req, res) => {
     const requestCacheState = {
         key: null,
         header: null,
-        useCache: false
+        useCache: false,
+        merchantKey: null
     };
     try {
         const { page = 1, limit = 20, search, skip_count, include_stats } = req.query;
@@ -375,6 +399,7 @@ router.get('/', checkPermission('can_view_customers'), async (req, res) => {
             include_stats: includeStats
         };
         const cacheKey = `customers:list:${req.merchantId}:${Buffer.from(JSON.stringify(cacheParams)).toString('base64')}`;
+        const merchantHotKey = `customers:list:last:${req.merchantId}`;
         const useCache = !isMockedDb;
         const ttlSeconds = Number(process.env.CUSTOMERS_LIST_CACHE_TTL || 120);
         const swrSeconds = Math.min(60, Math.max(10, Math.floor(ttlSeconds / 2)));
@@ -382,11 +407,14 @@ router.get('/', checkPermission('can_view_customers'), async (req, res) => {
         requestCacheState.key = cacheKey;
         requestCacheState.header = cacheHeader;
         requestCacheState.useCache = useCache;
+        requestCacheState.merchantKey = merchantHotKey;
         if (useCache) {
             try {
                 const cached = await getCache(cacheKey);
                 if (cached) {
                     res.set('Cache-Control', cacheHeader);
+                    writeHotCustomersCache(cacheKey, cached);
+                    writeHotCustomersCache(merchantHotKey, cached);
                     return res.json(cached);
                 }
             } catch (cacheErr) {
@@ -614,6 +642,8 @@ router.get('/', checkPermission('can_view_customers'), async (req, res) => {
                 hasMore
             }
         };
+        writeHotCustomersCache(cacheKey, payload);
+        writeHotCustomersCache(merchantHotKey, payload);
 
         if (useCache) {
             try {
@@ -639,6 +669,14 @@ router.get('/', checkPermission('can_view_customers'), async (req, res) => {
             } catch {
                 // ignore cache fallback errors
             }
+        }
+        const hotCached = readHotCustomersCache(requestCacheState.key)
+            || readHotCustomersCache(requestCacheState.merchantKey);
+        if (hotCached) {
+            if (requestCacheState.header) {
+                res.set('Cache-Control', requestCacheState.header);
+            }
+            return res.json(hotCached);
         }
         res.status(500).json({ error: 'Failed to fetch customers' });
     }
