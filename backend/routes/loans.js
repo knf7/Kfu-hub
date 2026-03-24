@@ -809,10 +809,12 @@ router.get('/', checkPermission('can_view_loans'), async (req, res) => {
             if (searchValue) {
                 const isNumeric = /^[0-9]+$/.test(searchValue);
                 if (isNumeric) {
-                    conds.push(`(c.national_id::text LIKE $${i} OR c.mobile_number::text LIKE $${i})`);
+                    // Use direct column comparison — works with text_pattern_ops indexes
+                    conds.push(`(c.national_id LIKE $${i} OR c.mobile_number LIKE $${i})`);
                     params.push(`${searchValue}%`);
                 } else {
-                    conds.push(`(c.full_name ILIKE $${i})`);
+                    // lower() ILIKE benefits from idx_cust_merchant_fullname_lower
+                    conds.push(`lower(c.full_name) LIKE lower($${i})`);
                     params.push(`%${searchValue}%`);
                 }
                 i++;
@@ -836,9 +838,10 @@ router.get('/', checkPermission('can_view_loans'), async (req, res) => {
         };
         const cacheKey = `loans:list:${req.merchantId}:${Buffer.from(JSON.stringify(cacheParams)).toString('base64')}`;
         const useCache = !isMockedDb && !forceFresh;
-        const ttlSeconds = Number(process.env.LOANS_LIST_CACHE_TTL || 120);
-        const swrSeconds = Math.min(60, Math.max(10, Math.floor(ttlSeconds / 2)));
-        const cacheHeader = `private, max-age=${ttlSeconds}, stale-while-revalidate=${swrSeconds}, stale-if-error=300`;
+        // Increase TTL: loans list is expensive — cache for 5 min (300s)
+        const ttlSeconds = Number(process.env.LOANS_LIST_CACHE_TTL || 300);
+        const swrSeconds = Math.min(120, Math.max(15, Math.floor(ttlSeconds / 2)));
+        const cacheHeader = `private, max-age=${ttlSeconds}, stale-while-revalidate=${swrSeconds}, stale-if-error=600`;
         requestState.cacheKey = cacheKey;
         requestState.cacheHeader = cacheHeader;
         if (useCache) {

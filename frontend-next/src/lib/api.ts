@@ -1,8 +1,8 @@
 import axios from 'axios';
 
 const API_CACHE_PREFIX = 'api-cache:';
-const API_CACHE_TTL_MS = 1000 * 60 * 5;
-const API_CACHE_STALE_MS = 1000 * 60 * 20;
+const API_CACHE_TTL_MS   = 1000 * 60 * 10;  // 10 min (matches backend 300s TTL)
+const API_CACHE_STALE_MS = 1000 * 60 * 30;  // 30 min stale window
 const memoryCache = new Map<string, { data: any; savedAt: number }>();
 const inflightGets = new Map<string, Promise<any>>();
 export const DASHBOARD_DIRTY_KEY = 'dashboard-dirty';

@@ -72,13 +72,15 @@ const buildCustomerSearchFilter = (searchValue, paramIndex) => {
     if (!normalized) return { clause: '', params: [] };
     const isNumeric = /^[0-9]+$/.test(normalized);
     if (isNumeric) {
+        // Direct column comparison — uses text_pattern_ops index (no ::text cast)
         return {
-            clause: `(c.national_id::text LIKE $${paramIndex} OR c.mobile_number::text LIKE $${paramIndex})`,
+            clause: `(c.national_id LIKE $${paramIndex} OR c.mobile_number LIKE $${paramIndex})`,
             params: [`${normalized}%`]
         };
     }
+    // lower() ILIKE benefits from idx_cust_merchant_fullname_lower index
     return {
-        clause: `c.full_name ILIKE $${paramIndex}`,
+        clause: `lower(c.full_name) LIKE lower($${paramIndex})`,
         params: [`%${normalized}%`]
     };
 };
@@ -406,9 +408,10 @@ router.get('/', checkPermission('can_view_customers'), async (req, res) => {
         const cacheKey = `customers:list:${req.merchantId}:${Buffer.from(JSON.stringify(cacheParams)).toString('base64')}`;
         const merchantHotKey = `customers:list:last:${req.merchantId}`;
         const useCache = !isMockedDb;
-        const ttlSeconds = Number(process.env.CUSTOMERS_LIST_CACHE_TTL || 120);
-        const swrSeconds = Math.min(60, Math.max(10, Math.floor(ttlSeconds / 2)));
-        const cacheHeader = `private, max-age=${ttlSeconds}, stale-while-revalidate=${swrSeconds}, stale-if-error=300`;
+        // Increase TTL: customers list is read-heavy — cache for 5 min (300s)
+        const ttlSeconds = Number(process.env.CUSTOMERS_LIST_CACHE_TTL || 300);
+        const swrSeconds = Math.min(120, Math.max(10, Math.floor(ttlSeconds / 2)));
+        const cacheHeader = `private, max-age=${ttlSeconds}, stale-while-revalidate=${swrSeconds}, stale-if-error=600`;
         requestCacheState.key = cacheKey;
         requestCacheState.header = cacheHeader;
         requestCacheState.useCache = useCache;
