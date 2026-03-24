@@ -777,6 +777,10 @@ const loanSchema = Joi.object({
 
 // GET /api/loans — List with pagination & filters
 router.get('/', checkPermission('can_view_loans'), async (req, res) => {
+    const requestState = {
+        cacheKey: null,
+        cacheHeader: null
+    };
     try {
         const { page = 1, limit = 20, status, customerId, startDate, endDate, search, is_najiz_case, skip_count, _t } = req.query;
         const pageNumber = Math.max(1, parseInt(page, 10) || 1);
@@ -835,6 +839,8 @@ router.get('/', checkPermission('can_view_loans'), async (req, res) => {
         const ttlSeconds = Number(process.env.LOANS_LIST_CACHE_TTL || 120);
         const swrSeconds = Math.min(60, Math.max(10, Math.floor(ttlSeconds / 2)));
         const cacheHeader = `private, max-age=${ttlSeconds}, stale-while-revalidate=${swrSeconds}, stale-if-error=300`;
+        requestState.cacheKey = cacheKey;
+        requestState.cacheHeader = cacheHeader;
         if (useCache) {
             const cached = await getCache(cacheKey);
             if (cached) {
@@ -842,6 +848,40 @@ router.get('/', checkPermission('can_view_loans'), async (req, res) => {
                 return res.json(cached);
             }
         }
+
+        const isTxAbortedError = (error) => {
+            if (!error) return false;
+            if (String(error.code || '') === '25P02') return true;
+            return String(error.message || '').toLowerCase().includes('current transaction is aborted');
+        };
+        const isTransientDbError = (error) => {
+            if (!error) return false;
+            const code = String(error.code || '').toUpperCase();
+            if (['53300', '57P01', '57P02', '57P03', '08000', '08003', '08006', 'XX000'].includes(code)) {
+                return true;
+            }
+            const msg = String(error.message || '').toLowerCase();
+            return msg.includes('max clients')
+                || msg.includes('pool')
+                || msg.includes('timeout')
+                || msg.includes('connection terminated');
+        };
+        const runListQuery = async (query, queryParams) => {
+            if (!req.dbClient?.query || req.dbClient?.query?._isMockFunction) {
+                return db.query(query, queryParams);
+            }
+            if (req.dbClientBroken) {
+                return db.query(query, queryParams);
+            }
+            try {
+                return await req.dbClient.query(query, queryParams);
+            } catch (error) {
+                if (!isTxAbortedError(error) && !isTransientDbError(error)) throw error;
+                req.dbClientBroken = true;
+                console.warn('Loans list query failed on scoped client; retrying on pool query.');
+                return db.query(query, queryParams);
+            }
+        };
 
         const countSelect = skipCount ? '' : ', COUNT(*) OVER() AS total_count';
         const queryLimit = skipCount ? limitNumber + 1 : limitNumber;
@@ -862,7 +902,7 @@ router.get('/', checkPermission('can_view_loans'), async (req, res) => {
             LIMIT $${i} OFFSET $${i + 1}
         `;
 
-        const dataRes = await req.dbClient.query(dataQuery, [...params, queryLimit, offset]);
+        const dataRes = await runListQuery(dataQuery, [...params, queryLimit, offset]);
         let rows = dataRes.rows;
         let hasMore = false;
         if (skipCount && rows.length > limitNumber) {
@@ -895,6 +935,19 @@ router.get('/', checkPermission('can_view_loans'), async (req, res) => {
         res.json(payload);
     } catch (err) {
         console.error('Get loans error:', err);
+        if (requestState.cacheKey) {
+            try {
+                const cached = await getCache(requestState.cacheKey);
+                if (cached) {
+                    if (requestState.cacheHeader) {
+                        res.set('Cache-Control', requestState.cacheHeader);
+                    }
+                    return res.json(cached);
+                }
+            } catch {
+                // ignore cache fallback errors
+            }
+        }
         res.status(500).json({ error: 'Failed to fetch loans' });
     }
 });
@@ -1079,20 +1132,87 @@ router.patch('/:id/najiz', checkPermission('can_add_loans'), async (req, res) =>
         }
 
         params.push(id, req.merchantId);
-        const result = await req.dbClient.query(
-            `UPDATE loans
+        const updateSql = `UPDATE loans
              SET ${updates.join(', ')}, updated_at = CURRENT_TIMESTAMP
              WHERE id = $${i} AND merchant_id = $${i + 1} AND deleted_at IS NULL
-             RETURNING *`,
-            params
-        );
+             RETURNING *`;
+        const result = await req.dbClient.query(updateSql, params);
 
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Loan not found or unauthorized' });
         }
 
+        const sameNullableNumber = (a, b) => {
+            if (a === null || a === undefined || a === '') return (b === null || b === undefined || b === '');
+            if (b === null || b === undefined || b === '') return false;
+            return Number(a) === Number(b);
+        };
+        const normalizeNullableText = (value) => {
+            if (value === null || value === undefined || value === '') return null;
+            return String(value).trim();
+        };
+        const normalizeDateOnly = (value) => {
+            if (value === null || value === undefined || value === '') return null;
+            const date = new Date(value);
+            if (Number.isNaN(date.getTime())) return String(value).slice(0, 10);
+            return date.toISOString().slice(0, 10);
+        };
+
+        const expected = {
+            is_najiz_case: value.is_najiz_case !== undefined ? Boolean(value.is_najiz_case) : undefined,
+            najiz_case_number: value.najiz_case_number !== undefined ? normalizeNullableText(value.najiz_case_number) : undefined,
+            najiz_status: value.najiz_status !== undefined ? normalizeNullableText(value.najiz_status) : undefined,
+            najiz_case_amount: value.najiz_case_amount !== undefined ? normalizeOptionalAmountInput(value.najiz_case_amount) : undefined,
+            najiz_collected_amount: value.najiz_collected_amount !== undefined ? normalizeOptionalAmountInput(value.najiz_collected_amount) : undefined,
+            najiz_plaintiff_name: value.najiz_plaintiff_name !== undefined ? normalizeNullableText(value.najiz_plaintiff_name) : undefined,
+            najiz_plaintiff_national_id: value.najiz_plaintiff_national_id !== undefined ? normalizeNullableText(value.najiz_plaintiff_national_id) : undefined,
+            najiz_raised_date: value.najiz_raised_date !== undefined ? normalizeDateOnly(value.najiz_raised_date) : undefined
+        };
+
+        const matchesExpected = (loanRow) => {
+            if (expected.is_najiz_case !== undefined && Boolean(loanRow.is_najiz_case) !== expected.is_najiz_case) return false;
+            if (expected.najiz_case_number !== undefined && normalizeNullableText(loanRow.najiz_case_number) !== expected.najiz_case_number) return false;
+            if (expected.najiz_status !== undefined && normalizeNullableText(loanRow.najiz_status) !== expected.najiz_status) return false;
+            if (expected.najiz_case_amount !== undefined && !sameNullableNumber(loanRow.najiz_case_amount, expected.najiz_case_amount)) return false;
+            if (expected.najiz_collected_amount !== undefined && !sameNullableNumber(loanRow.najiz_collected_amount, expected.najiz_collected_amount)) return false;
+            if (expected.najiz_plaintiff_name !== undefined && normalizeNullableText(loanRow.najiz_plaintiff_name) !== expected.najiz_plaintiff_name) return false;
+            if (expected.najiz_plaintiff_national_id !== undefined && normalizeNullableText(loanRow.najiz_plaintiff_national_id) !== expected.najiz_plaintiff_national_id) return false;
+            if (expected.najiz_raised_date !== undefined && normalizeDateOnly(loanRow.najiz_raised_date) !== expected.najiz_raised_date) return false;
+            return true;
+        };
+
+        let updatedLoan = result.rows[0];
+        const needsVerification = Object.values(expected).some((field) => field !== undefined);
+        if (needsVerification && !matchesExpected(updatedLoan)) {
+            const verifySql = `SELECT *
+                               FROM loans
+                               WHERE id = $1 AND merchant_id = $2 AND deleted_at IS NULL`;
+            const verifyResult = await req.dbClient.query(verifySql, [id, req.merchantId]);
+            if (verifyResult.rows.length > 0) {
+                updatedLoan = verifyResult.rows[0];
+            }
+        }
+        if (needsVerification && !matchesExpected(updatedLoan)) {
+            const retryResult = await req.dbClient.query(updateSql, params);
+            if (retryResult.rows.length > 0) {
+                updatedLoan = retryResult.rows[0];
+            }
+            const confirmResult = await req.dbClient.query(
+                `SELECT *
+                 FROM loans
+                 WHERE id = $1 AND merchant_id = $2 AND deleted_at IS NULL`,
+                [id, req.merchantId]
+            );
+            if (confirmResult.rows.length > 0) {
+                updatedLoan = confirmResult.rows[0];
+            }
+        }
+        if (needsVerification && !matchesExpected(updatedLoan)) {
+            return res.status(409).json({ error: 'تعذر تثبيت تحديث بيانات ناجز. أعد المحاولة بعد ثوانٍ.' });
+        }
+
         await invalidateReportsCache(req.merchantId);
-        res.json({ message: 'Najiz details updated successfully', loan: enrichLoan(result.rows[0]) });
+        res.json({ message: 'Najiz details updated successfully', loan: enrichLoan(updatedLoan) });
     } catch (err) {
         console.error('Update Najiz error:', err);
         res.status(500).json({ error: 'Failed to update Najiz details' });

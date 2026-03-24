@@ -137,6 +137,21 @@ export default function CustomersPage() {
             if (requestId !== requestIdRef.current) return;
             const hasExisting = hasVisibleCustomersRef.current || customersRef.current.length > 0 || usedCache;
             if (!hasExisting) {
+                const latestCached = customersAPI.peekLatest?.();
+                const latestCachedList = latestCached?.customers || [];
+                if (latestCachedList.length > 0) {
+                    const fallbackList = latestCachedList.map((c: any) => ({ ...c, stats_pending: true }));
+                    hasVisibleCustomersRef.current = true;
+                    setCustomers(fallbackList);
+                    setPage(latestCached?.pagination?.page ?? requestPage);
+                    setTotalPages(latestCached?.pagination?.totalPages ?? 1);
+                    setErrorMsg('');
+                    loadCustomerStats(fallbackList);
+                    toast.warning('تعذر تحديث القائمة الآن، تم عرض آخر بيانات محفوظة.');
+                    return;
+                }
+            }
+            if (!hasExisting) {
                 setCustomers([]);
                 setTotalPages(1);
             }

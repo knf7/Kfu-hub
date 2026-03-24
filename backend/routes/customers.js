@@ -335,7 +335,12 @@ router.get('/', checkPermission('can_view_customers'), async (req, res) => {
         key: null,
         header: null,
         useCache: false,
-        merchantKey: null
+        merchantKey: null,
+        emergencyQuery: null,
+        emergencyParams: null,
+        pageNumber: 1,
+        limitNumber: 20,
+        skipCount: false
     };
     try {
         const { page = 1, limit = 20, search, skip_count, include_stats } = req.query;
@@ -408,6 +413,9 @@ router.get('/', checkPermission('can_view_customers'), async (req, res) => {
         requestCacheState.header = cacheHeader;
         requestCacheState.useCache = useCache;
         requestCacheState.merchantKey = merchantHotKey;
+        requestCacheState.pageNumber = pageNumber;
+        requestCacheState.limitNumber = limitNumber;
+        requestCacheState.skipCount = skipCount;
         if (useCache) {
             try {
                 const cached = await getCache(cacheKey);
@@ -515,6 +523,8 @@ router.get('/', checkPermission('can_view_customers'), async (req, res) => {
             ORDER BY c.id DESC
             LIMIT $${params.length + 1} OFFSET $${params.length + 2}
         `;
+        requestCacheState.emergencyQuery = emergencyQuery;
+        requestCacheState.emergencyParams = [...params, queryLimit, offset];
 
         let baseResult;
         let baseError;
@@ -678,6 +688,61 @@ router.get('/', checkPermission('can_view_customers'), async (req, res) => {
             }
             return res.json(hotCached);
         }
+
+        if (requestCacheState.emergencyQuery && Array.isArray(requestCacheState.emergencyParams)) {
+            try {
+                const emergencyResult = await db.query(
+                    requestCacheState.emergencyQuery,
+                    requestCacheState.emergencyParams
+                );
+                let rows = emergencyResult.rows || [];
+                let hasMore = false;
+                if (requestCacheState.skipCount && rows.length > requestCacheState.limitNumber) {
+                    hasMore = true;
+                    rows = rows.slice(0, requestCacheState.limitNumber);
+                }
+                const totalCount = requestCacheState.skipCount
+                    ? ((requestCacheState.pageNumber - 1) * requestCacheState.limitNumber + rows.length + (hasMore ? 1 : 0))
+                    : (rows.length ? parseInt(rows[0].total_count || 0, 10) : 0);
+
+                const customers = rows.map((row) => {
+                    const { total_count, ...rest } = row;
+                    return enrichCustomer({
+                        ...rest,
+                        stats_pending: true
+                    });
+                });
+
+                const emergencyPayload = {
+                    customers,
+                    pagination: {
+                        page: requestCacheState.pageNumber,
+                        limit: requestCacheState.limitNumber,
+                        totalCount,
+                        totalPages: requestCacheState.skipCount
+                            ? (hasMore ? requestCacheState.pageNumber + 1 : requestCacheState.pageNumber)
+                            : Math.ceil(totalCount / requestCacheState.limitNumber),
+                        hasMore
+                    }
+                };
+
+                if (requestCacheState.header) {
+                    res.set('Cache-Control', requestCacheState.header);
+                }
+
+                if (requestCacheState.key) {
+                    writeHotCustomersCache(requestCacheState.key, emergencyPayload);
+                }
+                if (requestCacheState.merchantKey) {
+                    writeHotCustomersCache(requestCacheState.merchantKey, emergencyPayload);
+                }
+
+                return res.json(emergencyPayload);
+            } catch (emergencyErr) {
+                console.error('Emergency customers fallback failed:', emergencyErr);
+            }
+        }
+
         res.status(500).json({ error: 'Failed to fetch customers' });
     }
 });

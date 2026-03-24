@@ -130,6 +130,42 @@ const peekCached = (url: string, config: any = {}) => {
     return cached?.data;
 };
 
+const peekLatestCachedByPrefix = (urlPrefix: string) => {
+    const tag = getMerchantCacheTag();
+    const marker = `${API_CACHE_PREFIX}${tag}::${urlPrefix}`;
+    let latestData: any = null;
+    let latestSavedAt = 0;
+
+    memoryCache.forEach((entry, key) => {
+        if (!key.startsWith(marker)) return;
+        if (entry.savedAt > latestSavedAt) {
+            latestSavedAt = entry.savedAt;
+            latestData = entry.data;
+        }
+    });
+
+    if (typeof window !== 'undefined') {
+        try {
+            Object.keys(sessionStorage).forEach((key) => {
+                if (!key.startsWith(marker)) return;
+                const raw = sessionStorage.getItem(key);
+                if (!raw) return;
+                const parsed = JSON.parse(raw);
+                if (!parsed || typeof parsed !== 'object') return;
+                const savedAt = Number(parsed.savedAt || 0);
+                if (savedAt > latestSavedAt) {
+                    latestSavedAt = savedAt;
+                    latestData = parsed.data;
+                }
+            });
+        } catch {
+            // ignore storage parse issues
+        }
+    }
+
+    return latestData;
+};
+
 const clearCacheByPrefix = (urlPrefix: string) => {
     const matcher = `::${urlPrefix}`;
     memoryCache.forEach((_value, key) => {
@@ -377,6 +413,7 @@ export const loansAPI = {
 export const customersAPI = {
     getAll: (params: any) => cachedGet('/customers', { params }),
     peekAll: (params: any) => peekCached('/customers', { params }),
+    peekLatest: () => peekLatestCachedByPrefix('/customers'),
     prefetchAll: (params: any) => warmCache('/customers', { params }),
     getStats: (ids: string[]) => cachedGet('/customers/stats', { params: { ids: ids.join(',') } }),
     getById: (id: string) => cachedGet(`/customers/${id}`),
