@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { loansAPI } from '@/lib/api';
+import { loansAPI, invalidateCacheForScopes } from '@/lib/api';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
@@ -55,12 +55,14 @@ export default function NajizCasesPage() {
     const fetchCases = useCallback(async (forceFresh = false) => {
         const requestId = ++requestIdRef.current;
         try {
-            if (cases.length === 0) {
+            if (requestId === 1) {
                 setLoading(true);
             }
             const params: any = { is_najiz_case: true, limit: 100, skip_count: true };
             if (forceFresh) {
+                // Add timestamp to bust any server-side cache key
                 params._t = Date.now();
+                params.force_fresh = '1';
             }
             const response = await loansAPI.getAll(params);
             if (requestId !== requestIdRef.current) return;
@@ -80,7 +82,8 @@ export default function NajizCasesPage() {
                 setLoading(false);
             }
         }
-    }, [cases.length]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []); // Stable ref — never stale
 
     useEffect(() => {
         fetchCases();
@@ -130,42 +133,58 @@ export default function NajizCasesPage() {
     const saveNajizDetails = async (loan: NajizCase) => {
         try {
             setUpdatingId(loan.id);
-            const caseAmount = parseMoneyInput(loan.najiz_case_amount);
+            const caseAmount      = parseMoneyInput(loan.najiz_case_amount);
             const collectedAmount = parseMoneyInput(loan.najiz_collected_amount);
+
             const response = await loansAPI.updateNajizCase(loan.id, {
-                is_najiz_case: true,
-                najiz_case_amount: caseAmount,
-                najiz_collected_amount: collectedAmount,
-                najiz_plaintiff_name: loan.najiz_plaintiff_name,
+                is_najiz_case:               true,
+                najiz_case_amount:           caseAmount,
+                najiz_collected_amount:      collectedAmount,
+                najiz_plaintiff_name:        loan.najiz_plaintiff_name,
                 najiz_plaintiff_national_id: loan.najiz_plaintiff_national_id,
-                najiz_status: loan.najiz_status,
-                najiz_raised_date: loan.najiz_raised_date,
-                najiz_case_number: loan.najiz_case_number
+                najiz_status:                loan.najiz_status,
+                najiz_raised_date:           loan.najiz_raised_date,
+                najiz_case_number:           loan.najiz_case_number
             });
+
             let updatedLoan = response?.data?.loan ?? null;
+
+            // ── Fix 1: Mismatch guard with re-read ────────────────────────────
             const serverCollected = Number(updatedLoan?.najiz_collected_amount ?? NaN);
-            const shouldVerifyRead = updatedLoan === null
-                || (collectedAmount !== null && Number.isFinite(collectedAmount) && serverCollected !== Number(collectedAmount));
-            if (shouldVerifyRead) {
+            const needsVerify     = updatedLoan === null
+                || (collectedAmount !== null
+                    && Number.isFinite(collectedAmount)
+                    && serverCollected !== Number(collectedAmount));
+
+            if (needsVerify) {
                 try {
                     const verifyRes = await loansAPI.getById(loan.id);
-                    updatedLoan = verifyRes?.data || updatedLoan;
+                    updatedLoan = verifyRes?.data?.loan ?? verifyRes?.data ?? updatedLoan;
                 } catch {
-                    // keep optimistic value if verification fetch fails
+                    // keep the response value
                 }
             }
+
+            // ── Fix 2: Flush frontend cache BEFORE refresh ────────────────────
+            // This ensures the next getAll() call hits the server, not stale memory
+            invalidateCacheForScopes(['loans', 'najiz', 'dashboard', 'reports']);
+
+            // ── Fix 3: Update local state immediately from server response ────
             setCases(prev => prev.map((currentLoan) =>
                 currentLoan.id === loan.id
                     ? {
                         ...currentLoan,
                         ...updatedLoan,
                         is_najiz_case: true,
-                        najiz_case_amount: updatedLoan?.najiz_case_amount ?? caseAmount ?? '',
+                        najiz_case_amount:      updatedLoan?.najiz_case_amount      ?? caseAmount      ?? '',
                         najiz_collected_amount: updatedLoan?.najiz_collected_amount ?? collectedAmount ?? ''
                     }
                     : currentLoan
             ));
-            scheduleRefresh(900, true);
+
+            // ── Fix 4: Force-fresh server refetch (bypasses all caches) ───────
+            scheduleRefresh(800, true);
+
         } catch {
             toast.error('فشل حفظ التحديثات');
             return;

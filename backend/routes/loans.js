@@ -787,7 +787,7 @@ router.get('/', checkPermission('can_view_loans'), async (req, res) => {
         const limitNumber = Math.min(100, parseInt(limit, 10) || 20);
         const offset = (pageNumber - 1) * limitNumber;
         const skipCount = skip_count === 'true' || req.query.skipCount === 'true';
-        const forceFresh = _t !== undefined;
+        const forceFresh = _t !== undefined || req.query.force_fresh === '1';
         let conds = ['l.merchant_id = $1', 'l.deleted_at IS NULL'];
         let params = [req.merchantId];
         let i = 2;
