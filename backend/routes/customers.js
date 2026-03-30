@@ -60,6 +60,7 @@ const invalidateReportsCache = async (merchantId) => {
         await clearCacheByPrefix(`reports:dashboard:${merchantId}`);
         await clearCacheByPrefix(`reports:analytics:${merchantId}:`);
         await clearCacheByPrefix(`reports:ai:${merchantId}`);
+        await clearCacheByPrefix(`reports:monthly:${merchantId}:`);
         await clearCacheByPrefix(`customers:list:${merchantId}:`);
         await clearCacheByPrefix(`loans:list:${merchantId}:`);
     } catch {
@@ -571,7 +572,7 @@ router.get('/', checkPermission('can_view_customers'), async (req, res) => {
             const loanAggQuery = `
                 SELECT
                     l.customer_id,
-                    COALESCE(SUM(CASE WHEN l.status = 'Active' THEN l.amount ELSE 0 END), 0) AS total_debt,
+                    COALESCE(SUM(CASE WHEN l.status IN ('Active', 'Raised') THEN l.amount - COALESCE(l.najiz_collected_amount, 0) ELSE 0 END), 0) AS total_debt,
                     COALESCE(COUNT(l.id), 0) AS total_loans,
                     COALESCE(COUNT(l.id) FILTER (WHERE l.status = 'Paid'), 0) AS paid_loans,
                     COALESCE(COUNT(l.id) FILTER (WHERE l.status = 'Raised'), 0) AS raised_loans,
@@ -585,7 +586,7 @@ router.get('/', checkPermission('can_view_customers'), async (req, res) => {
             const loanAggFallbackQuery = `
                 SELECT
                     l.customer_id,
-                    COALESCE(SUM(CASE WHEN l.status = 'Active' THEN l.amount ELSE 0 END), 0) AS total_debt,
+                    COALESCE(SUM(CASE WHEN l.status IN ('Active', 'Raised') THEN l.amount - COALESCE(l.najiz_collected_amount, 0) ELSE 0 END), 0) AS total_debt,
                     COALESCE(COUNT(l.id), 0) AS total_loans,
                     COALESCE(COUNT(l.id) FILTER (WHERE l.status = 'Paid'), 0) AS paid_loans,
                     COALESCE(COUNT(l.id) FILTER (WHERE l.status = 'Raised'), 0) AS raised_loans,
@@ -785,7 +786,7 @@ router.get('/stats', checkPermission('can_view_customers'), async (req, res) => 
         const loanAggQuery = `
             SELECT
                 l.customer_id,
-                COALESCE(SUM(CASE WHEN l.status = 'Active' THEN l.amount ELSE 0 END), 0) AS total_debt,
+                COALESCE(SUM(CASE WHEN l.status IN ('Active', 'Raised') THEN l.amount - COALESCE(l.najiz_collected_amount, 0) ELSE 0 END), 0) AS total_debt,
                 COALESCE(COUNT(l.id), 0) AS total_loans,
                 COALESCE(COUNT(l.id) FILTER (WHERE l.status = 'Paid'), 0) AS paid_loans,
                 COALESCE(COUNT(l.id) FILTER (WHERE l.status = 'Raised'), 0) AS raised_loans,

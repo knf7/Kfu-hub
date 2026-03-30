@@ -89,7 +89,7 @@ export function useAuth() {
             }
             toast.success('تم تسجيل الدخول بنجاح.');
             queryClient.invalidateQueries({ queryKey: ['user'] });
-            router.push('/dashboard');
+            router.push('/dashboard/quick-entry');
         },
         onError: (error: unknown) => {
             const apiError = error as ApiError;

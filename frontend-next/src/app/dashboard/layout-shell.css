@@ -47,6 +47,7 @@
 .sidebar-brand {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 14px;
   padding: 4px 2px 10px;
 }
@@ -107,6 +108,8 @@
   color: rgba(255, 255, 255, 0.94);
   background: rgba(123, 154, 231, 0.16);
   border: 1px solid rgba(123, 154, 231, 0.24);
+  cursor: pointer;
+  flex-shrink: 0;
 }
 
 .collapse-btn:hover {
@@ -351,16 +354,16 @@
 
 .collapsed .sidebar-brand {
   justify-content: center;
-  padding: 50px 0 10px;
-  position: relative;
+  padding: 8px 0 10px;
+  gap: 8px;
 }
 
 .collapsed .collapse-btn {
-  position: absolute;
-  top: 0;
-  left: 50%;
-  transform: translateX(-50%);
+  position: static;
+  transform: none;
   margin-right: 0;
+  width: 40px;
+  height: 40px;
 }
 
 .topbar {
@@ -527,5 +530,9 @@
 
   .collapsed .ops-sidebar {
     width: min(90vw, 268px);
+  }
+
+  .collapse-btn {
+    display: none;
   }
 }

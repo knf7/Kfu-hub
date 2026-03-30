@@ -458,6 +458,17 @@ export const settingsAPI = {
 };
 
 export const authAPI = {
+    login: (identifier: string, password: string, rememberMe = false) =>
+        api.post('/auth/login', { identifier, password, rememberMe }),
+    register: (payload: {
+        businessName: string;
+        username: string;
+        email: string;
+        mobile: string;
+        password: string;
+    }) => api.post('/auth/register', payload),
+    forgotPassword: (email: string) => api.post('/auth/forgot-password', { email }),
+    resetPassword: (token: string, newPassword: string) => api.post('/auth/reset-password', { token, newPassword }),
     endAllSessions: () => api.post('/auth/end-all-sessions'),
 };
 
@@ -488,7 +499,22 @@ export const employeesAPI = {
 export const reportsAPI = {
     getDashboard: (params: any) => cachedGet('/reports/dashboard', { params }),
     getAnalytics: (params: any) => cachedGet('/reports/analytics', { params }),
+    getMonthlySummary: (params: any) => cachedGet('/reports/monthly-summary', { params }),
     getAIAnalysis: (params: any) => cachedGet('/reports/ai-analysis', { params }),
+};
+
+export const assistantAPI = {
+    quickEntry: async (payload: { message: string; draft?: any; confirm?: boolean; aiExtracted?: any }) => {
+        const res = await api.post('/assistant/quick-entry', payload);
+        if (res.status === 201 || res?.data?.record) {
+            clearCacheByPrefix('/loans');
+            clearCacheByPrefix('/customers');
+            clearCacheByPrefix('/reports');
+            clearDashboardCache();
+            emitDataSync({ scopes: ['loans', 'customers', 'dashboard', 'reports', 'analytics', 'najiz'], reason: 'quick-entry-created' });
+        }
+        return res;
+    },
 };
 
 export const perfAPI = {

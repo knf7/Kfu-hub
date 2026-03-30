@@ -6,10 +6,14 @@ import Link from 'next/link';
 import { toast } from 'sonner';
 import { customersAPI, loansAPI, reportsAPI } from '@/lib/api';
 import {
+  IconClipboard,
   IconAnalytics,
+  IconChevronLeft,
+  IconChevronRight,
   IconDashboard,
   IconLogout,
   IconLoans,
+  IconMessageCircle,
   IconPlus,
   IconScale,
   IconSettings,
@@ -39,15 +43,19 @@ type NavItem = {
 };
 
 const NAV_ITEMS: NavItem[] = [
+  { path: '/dashboard/quick-entry', label: 'الإدخال السريع', Icon: IconMessageCircle, group: 'operations' },
   { path: '/dashboard', label: 'الرئيسية', Icon: IconDashboard, group: 'operations' },
   { path: '/dashboard/customers', label: 'العملاء', Icon: IconUsers, group: 'operations' },
   { path: '/dashboard/loans', label: 'القروض', Icon: IconLoans, group: 'operations' },
   { path: '/dashboard/najiz', label: 'قضايا ناجز', Icon: IconScale, group: 'operations' },
+  { path: '/dashboard/monthly-report', label: 'التقرير الشهري', Icon: IconClipboard, group: 'insights' },
   { path: '/dashboard/analytics', label: 'التحليلات', Icon: IconAnalytics, group: 'insights' },
   { path: '/dashboard/settings', label: 'الإعدادات', Icon: IconSettings, group: 'system' },
 ];
 
 const QUICK_ACTIONS = [
+  { path: '/dashboard/quick-entry', label: 'إدخال سريع', Icon: IconMessageCircle },
+  { path: '/dashboard/monthly-report', label: 'تقرير شهري', Icon: IconClipboard },
   { path: '/dashboard/loans/new', label: 'إضافة قرض', Icon: IconPlus },
   { path: '/dashboard/loans/import', label: 'رفع ملف', Icon: IconUpload },
 ];
@@ -75,6 +83,15 @@ const scheduleIdle = (callback: () => void) => {
   }
   const id = window.setTimeout(callback, 600);
   return () => window.clearTimeout(id);
+};
+
+const SIDEBAR_COLLAPSED_KEY = 'ops-sidebar-collapsed';
+
+const readStoredSidebarState = () => {
+  if (typeof window === 'undefined') return true;
+  const stored = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
+  if (stored === null) return true;
+  return stored === '1';
 };
 
 const readStoredMerchant = (): Merchant => {
@@ -115,8 +132,13 @@ function AseelLogoMark({ compact = false }: { compact?: boolean }) {
   );
 }
 
+const findNavMatch = (currentPath: string) => {
+  const matches = NAV_ITEMS.filter((item) => currentPath === item.path || currentPath?.startsWith(`${item.path}/`));
+  return matches.sort((a, b) => b.path.length - a.path.length)[0];
+};
+
 function Breadcrumb({ pathname }: { pathname: string }) {
-  const currentItem = NAV_ITEMS.find((item) => item.path === pathname);
+  const currentItem = findNavMatch(pathname);
   if (!currentItem || pathname === '/dashboard') return null;
   return (
     <nav className="breadcrumb" aria-label="مسار التصفح">
@@ -131,26 +153,29 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
   const pathname = usePathname();
   const router = useRouter();
 
-  const collapsed = false;
+  const [collapsed, setCollapsed] = useState<boolean>(readStoredSidebarState);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [currentUser] = useState<Merchant>(readStoredMerchant);
   const merchant = currentUser;
+  const isCollapsed = collapsed && !mobileOpen;
   const [darkMode, setDarkMode] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
     return (localStorage.getItem('theme') || 'light') === 'dark';
   });
 
   const currentTitle = useMemo(() => {
-    const current = NAV_ITEMS.find((item) => pathname === item.path || pathname?.startsWith(`${item.path}/`));
+    const current = findNavMatch(pathname);
     return current?.label || 'لوحة التحكم';
   }, [pathname]);
 
   const hasPageAccess = useCallback((path: string) => {
     if (!currentUser.role || currentUser.role === 'merchant') return true;
     const perms = currentUser.permissions || {};
+    if (path.startsWith('/dashboard/quick-entry')) return !!perms.can_add_loans;
     if (path.startsWith('/dashboard/loans')) return !!perms.can_view_loans;
     if (path.startsWith('/dashboard/customers')) return !!perms.can_view_customers;
     if (path.startsWith('/dashboard/najiz')) return !!(perms.can_view_najiz || perms.can_view_loans);
+    if (path.startsWith('/dashboard/monthly-report')) return !!(perms.can_view_dashboard || perms.can_view_analytics);
     if (path.startsWith('/dashboard/analytics')) return !!perms.can_view_analytics;
     if (path.startsWith('/dashboard/settings')) return !!perms.can_view_settings;
     if (path === '/dashboard') return !!perms.can_view_dashboard;
@@ -165,6 +190,8 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
     if (!currentUser.role || currentUser.role === 'merchant') return QUICK_ACTIONS;
     const perms = currentUser.permissions || {};
     return QUICK_ACTIONS.filter((action) => {
+      if (action.path.includes('/quick-entry')) return !!perms.can_add_loans;
+      if (action.path.includes('/monthly-report')) return !!(perms.can_view_dashboard || perms.can_view_analytics);
       if (action.path.includes('/new')) return !!perms.can_add_loans;
       if (action.path.includes('/import')) return !!perms.can_upload_loans;
       return true;
@@ -186,6 +213,11 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
     localStorage.setItem('color_palette', palette);
     document.documentElement.setAttribute('data-color-palette', palette);
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem(SIDEBAR_COLLAPSED_KEY, collapsed ? '1' : '0');
+  }, [collapsed]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -253,6 +285,9 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
       if (visibleNavItems.some((item) => item.path === '/dashboard/analytics')) {
         reportsAPI.getAnalytics({ interval: 'year' });
       }
+      if (visibleNavItems.some((item) => item.path === '/dashboard/monthly-report')) {
+        reportsAPI.getMonthlySummary({});
+      }
       if (visibleNavItems.some((item) => item.path === '/dashboard')) {
         reportsAPI.getDashboard({});
       }
@@ -298,7 +333,7 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
   );
 
   return (
-    <div className={`ops-shell ${collapsed ? 'collapsed' : ''} ${mobileOpen ? 'mobile-open' : ''}`}>
+    <div className={`ops-shell ${isCollapsed ? 'collapsed' : ''} ${mobileOpen ? 'mobile-open' : ''}`}>
       <AnimatedBackground />
 
       {mobileOpen && <div className="mobile-overlay" onClick={() => setMobileOpen(false)} aria-hidden="true" />}
@@ -317,12 +352,21 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
         <div className="sidebar-top">
           <div className="sidebar-brand">
             <div className="brand-logo-creative" aria-label="أصيل المالي">
-              <AseelLogoMark />
-              <div className="brand-logo-caption">إدارة ذكية للعملاء والمعاملات المالية</div>
+              <AseelLogoMark compact={isCollapsed} />
+              {!isCollapsed && <div className="brand-logo-caption">إدارة ذكية للعملاء والمعاملات المالية</div>}
             </div>
+            <button
+              className="collapse-btn"
+              type="button"
+              onClick={() => setCollapsed((prev) => !prev)}
+              aria-label={isCollapsed ? 'توسيع القائمة الجانبية' : 'طي القائمة الجانبية'}
+              aria-pressed={isCollapsed}
+            >
+              {isCollapsed ? <IconChevronLeft size={16} /> : <IconChevronRight size={16} />}
+            </button>
           </div>
 
-          {!collapsed && (
+          {!isCollapsed && (
             <div className="sidebar-merchant">
               <div className="merchant-avatar"><IconStore size={19} color="#fff" /></div>
               <div className="merchant-info-text">
@@ -338,7 +382,7 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
             </div>
           )}
 
-          {!collapsed && (
+          {!isCollapsed && (
             <div className="quick-actions" aria-label="إجراءات سريعة">
               {visibleQuickActions.map(({ path, label, Icon }) => (
                 <Link key={path} href={path} className="quick-action" onClick={() => setMobileOpen(false)}>
@@ -357,9 +401,9 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
 
             return (
               <section key={group} className="nav-group">
-                {!collapsed && <h3 className="nav-group-title">{GROUP_LABELS[group]}</h3>}
+                {!isCollapsed && <h3 className="nav-group-title">{GROUP_LABELS[group]}</h3>}
                 {items.map(({ path, label, Icon }) => {
-                  const active = pathname === path;
+                  const active = pathname === path || pathname?.startsWith(`${path}/`);
                   return (
                     <Link
                       key={path}
@@ -369,7 +413,7 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
                       onClick={() => setMobileOpen(false)}
                     >
                       <span className="nav-icon"><Icon size={18} /></span>
-                      {!collapsed && <span className="nav-label">{label}</span>}
+                      {!isCollapsed && <span className="nav-label">{label}</span>}
                     </Link>
                   );
                 })}
@@ -388,12 +432,12 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
             <span className="theme-icon" aria-hidden="true">
               {darkMode ? <IconDiamond size={18} /> : <IconStar size={18} />}
             </span>
-            {!collapsed && <span className="theme-label">{darkMode ? 'وضع نهاري' : 'وضع ليلي'}</span>}
+            {!isCollapsed && <span className="theme-label">{darkMode ? 'وضع نهاري' : 'وضع ليلي'}</span>}
           </button>
 
           <button className="sidebar-logout" onClick={handleLogout} aria-label="تسجيل الخروج">
             <IconLogout size={16} />
-            {!collapsed && <span>تسجيل الخروج</span>}
+            {!isCollapsed && <span>تسجيل الخروج</span>}
           </button>
         </div>
       </aside>

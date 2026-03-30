@@ -39,6 +39,7 @@ bindTransport(async (jobData) => {
 });
 const reportsRoutes = require('./routes/reports');
 const subscriptionRoutes = require('./routes/subscription');
+const assistantRoutes = require('./routes/assistant');
 const logger = require('./utils/logger');
 const metricsController = require('./controllers/metricsController');
 const bullBoardEnabled = process.env.ENABLE_BULL_BOARD === 'true' && !process.env.VERCEL;
@@ -339,6 +340,7 @@ app.use('/api/loans', loansRoutes);
 app.use('/api/customers', customersRoutes);
 app.use('/api/perf', perfRoutes);
 app.use('/api/reports', reportsRoutes);
+app.use('/api/assistant', assistantRoutes);
 app.use('/api/subscription', subscriptionRoutes);
 app.use('/api/settings', require('./routes/settings'));
 app.use('/api/employees', require('./routes/employees'));

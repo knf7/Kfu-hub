@@ -87,6 +87,193 @@ const buildLoanSqlHelpers = (columnFlags) => {
     };
 };
 
+const AR_MONTH_NAMES = [
+    'يناير',
+    'فبراير',
+    'مارس',
+    'أبريل',
+    'مايو',
+    'يونيو',
+    'يوليو',
+    'أغسطس',
+    'سبتمبر',
+    'أكتوبر',
+    'نوفمبر',
+    'ديسمبر'
+];
+
+const toPositiveNumber = (value) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const toCount = (value) => {
+    const parsed = Number.parseInt(String(value || 0), 10);
+    return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const formatIsoDate = (date) => {
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) return null;
+    return date.toISOString().slice(0, 10);
+};
+
+const parseMonthlyWindow = (yearInput, monthInput) => {
+    const hasYear = yearInput !== undefined;
+    const hasMonth = monthInput !== undefined;
+
+    if ((hasYear && !hasMonth) || (!hasYear && hasMonth)) {
+        return { error: 'يرجى إرسال year و month معًا أو تركهما فارغين.' };
+    }
+
+    let year;
+    let monthIndex; // zero-based
+
+    if (hasYear && hasMonth) {
+        year = Number.parseInt(String(yearInput), 10);
+        const month = Number.parseInt(String(monthInput), 10);
+
+        if (!Number.isFinite(year) || year < 2000 || year > 2100) {
+            return { error: 'year غير صالح. القيمة المتوقعة بين 2000 و 2100.' };
+        }
+        if (!Number.isFinite(month) || month < 1 || month > 12) {
+            return { error: 'month غير صالح. القيمة المتوقعة بين 1 و 12.' };
+        }
+        monthIndex = month - 1;
+    } else {
+        const now = new Date();
+        year = now.getUTCFullYear();
+        monthIndex = now.getUTCMonth() - 1;
+        if (monthIndex < 0) {
+            monthIndex = 11;
+            year -= 1;
+        }
+    }
+
+    const start = new Date(Date.UTC(year, monthIndex, 1, 0, 0, 0));
+    const end = new Date(Date.UTC(year, monthIndex + 1, 1, 0, 0, 0));
+    const prevStart = new Date(Date.UTC(year, monthIndex - 1, 1, 0, 0, 0));
+    const prevEnd = start;
+
+    return {
+        year,
+        month: monthIndex + 1,
+        monthName: AR_MONTH_NAMES[monthIndex] || `شهر ${monthIndex + 1}`,
+        start,
+        end,
+        prevStart,
+        prevEnd,
+        startDate: formatIsoDate(start),
+        endDate: formatIsoDate(new Date(end.getTime() - 1)),
+    };
+};
+
+const calcChangePercent = (current, previous) => {
+    const safeCurrent = toPositiveNumber(current);
+    const safePrevious = toPositiveNumber(previous);
+    if (safePrevious <= 0) return safeCurrent > 0 ? 100 : 0;
+    return Number((((safeCurrent - safePrevious) / safePrevious) * 100).toFixed(2));
+};
+
+const buildMonthlyRecommendations = ({ summary, statusBreakdown }) => {
+    const recommendations = [];
+    const raisedCases = statusBreakdown.find((item) => item.status === 'Raised');
+
+    if (summary.collectionRate < 70 && summary.activeAmount > 0) {
+        recommendations.push('زيادة جولات التحصيل الأسبوعية للحالات النشطة والمتأخرة.');
+    }
+    if (summary.growth.disbursedChangePercent < -10) {
+        recommendations.push('مراجعة سياسة المنح وتوزيع المبالغ بسبب تراجع الصرف مقارنة بالشهر السابق.');
+    }
+    if ((raisedCases?.count || 0) > 0) {
+        recommendations.push(`متابعة ${raisedCases.count} حالة مرفوعة في ناجز وربطها بخطة تحصيل واضحة.`);
+    }
+    if (summary.activeSharePercent > 75) {
+        recommendations.push('تقليل التركز في القروض النشطة وتحسين مزيج السداد الشهري.');
+    }
+    if (recommendations.length === 0) {
+        recommendations.push('استمر على نفس نمط التشغيل مع مراقبة أسبوعية للمتأخرات.');
+    }
+
+    return recommendations.slice(0, 4);
+};
+
+const buildMonthlyInsights = ({ summary, statusBreakdown }) => {
+    const insights = [];
+
+    if (summary.totalLoans === 0) {
+        return [
+            {
+                type: 'info',
+                priority: 3,
+                title: 'لا توجد قروض في هذا الشهر',
+                detail: 'ابدأ بإدخال قروض جديدة حتى تظهر مؤشرات الأداء الشهرية.',
+            }
+        ];
+    }
+
+    if (summary.collectionRate >= 85) {
+        insights.push({
+            type: 'success',
+            priority: 1,
+            title: 'تحصيل قوي هذا الشهر',
+            detail: `نسبة التحصيل بلغت ${summary.collectionRate}% وهي أعلى من النطاق الممتاز.`,
+        });
+    } else if (summary.collectionRate >= 65) {
+        insights.push({
+            type: 'warning',
+            priority: 2,
+            title: 'التحصيل متوسط ويحتاج متابعة',
+            detail: `نسبة التحصيل ${summary.collectionRate}%. يفضل رفع المتابعة للحالات النشطة.`,
+        });
+    } else {
+        insights.push({
+            type: 'danger',
+            priority: 1,
+            title: 'انخفاض ملحوظ في التحصيل',
+            detail: `نسبة التحصيل ${summary.collectionRate}% فقط. يلزم تفعيل خطة تحصيل عاجلة.`,
+        });
+    }
+
+    if (summary.growth.disbursedChangePercent > 15) {
+        insights.push({
+            type: 'success',
+            priority: 2,
+            title: 'نمو إيجابي في الصرف',
+            detail: `الصرف الشهري ارتفع ${summary.growth.disbursedChangePercent}% مقارنة بالشهر السابق.`,
+        });
+    } else if (summary.growth.disbursedChangePercent < -15) {
+        insights.push({
+            type: 'warning',
+            priority: 2,
+            title: 'تراجع في الصرف الشهري',
+            detail: `الصرف الشهري انخفض ${Math.abs(summary.growth.disbursedChangePercent)}% عن الشهر السابق.`,
+        });
+    }
+
+    if (summary.activeSharePercent > 75) {
+        insights.push({
+            type: 'warning',
+            priority: 2,
+            title: 'نسبة القروض النشطة مرتفعة',
+            detail: `${summary.activeSharePercent}% من المحفظة ما زالت نشطة، ما يعني سيولة معلّقة أعلى من المعتاد.`,
+        });
+    }
+
+    const raisedCases = statusBreakdown.find((item) => item.status === 'Raised');
+    if ((raisedCases?.count || 0) > 0) {
+        insights.push({
+            type: 'info',
+            priority: 2,
+            title: 'حالات مرفوعة في ناجز',
+            detail: `تم تسجيل ${raisedCases.count} حالة مرفوعة هذا الشهر بقيمة ${toPositiveNumber(raisedCases.amount).toLocaleString('ar-SA')} ر.س.`,
+        });
+    }
+
+    return insights
+        .sort((a, b) => a.priority - b.priority)
+        .slice(0, 6);
+};
+
 // Apply auth middleware to all routes
 router.use(authenticateToken);
 router.use(injectMerchantId);
@@ -541,6 +728,238 @@ router.get('/analytics', checkPermission('can_view_analytics'), async (req, res)
     } catch (err) {
         console.error('Analytics error:', err);
         res.status(500).json({ error: 'Failed to fetch analytics' });
+    }
+});
+
+// ─────────────────────────────────────────────────────────
+// GET /api/reports/monthly-summary — Previous/current month summary
+// ─────────────────────────────────────────────────────────
+router.get('/monthly-summary', checkPermission('can_view_analytics'), async (req, res) => {
+    try {
+        const id = req.merchantId;
+        const monthlyWindow = parseMonthlyWindow(req.query.year, req.query.month);
+        if (monthlyWindow.error) {
+            return res.status(400).json({ error: monthlyWindow.error });
+        }
+
+        const columnFlags = await getLoanColumnFlags();
+        const loanSql = buildLoanSqlHelpers(columnFlags);
+        const isMockedDb = Boolean(db.query && db.query._isMockFunction);
+        const forceFresh = req.query._t !== undefined;
+        const cacheKey = `reports:monthly:${id}:${monthlyWindow.year}-${String(monthlyWindow.month).padStart(2, '0')}`;
+        const useCache = !isMockedDb && !forceFresh;
+        const ttlSeconds = Number(process.env.REPORTS_MONTHLY_TTL || 300);
+        const swrSeconds = Math.min(120, Math.max(30, Math.floor(ttlSeconds / 2)));
+        const cacheHeader = `private, max-age=${ttlSeconds}, stale-while-revalidate=${swrSeconds}, stale-if-error=300`;
+
+        if (useCache) {
+            const cached = await getCache(cacheKey);
+            if (cached) {
+                res.set('Cache-Control', cacheHeader);
+                return res.json(cached);
+            }
+        }
+
+        const queryClient = req.dbClient?.query ? req.dbClient : db;
+        const [
+            summaryRes,
+            customerRes,
+            statusRes,
+            topCustomersRes,
+            weeklyRes,
+            previousSummaryRes
+        ] = await runBatchQueries(queryClient, [
+            [
+                `SELECT
+                   COUNT(*)::int AS total_loans,
+                   COALESCE(SUM(l.amount), 0) AS total_disbursed,
+                   COALESCE(SUM(
+                     CASE
+                       WHEN l.status = 'Paid' AND (${loanSql.isNajizCase('l')})
+                         THEN ${loanSql.najizCollectedPaid('l')}
+                       WHEN l.status = 'Paid'
+                         THEN l.amount
+                       ELSE 0
+                     END
+                   ), 0) AS total_collected,
+                   COALESCE(SUM(CASE WHEN l.status = 'Active' THEN l.amount ELSE 0 END), 0) AS active_amount,
+                   COALESCE(SUM(CASE WHEN l.status = 'Raised' THEN COALESCE(l.najiz_case_amount, l.amount) ELSE 0 END), 0) AS raised_amount
+                 FROM loans l
+                 WHERE l.merchant_id = $1
+                   ${loanSql.deletedFilter('l')}
+                   AND l.transaction_date >= $2
+                   AND l.transaction_date < $3`,
+                [id, monthlyWindow.start, monthlyWindow.end]
+            ],
+            [
+                `SELECT
+                   COUNT(DISTINCT l.customer_id)::int AS unique_customers,
+                   COUNT(DISTINCT CASE WHEN l.status = 'Active' THEN l.customer_id END)::int AS active_customers
+                 FROM loans l
+                 WHERE l.merchant_id = $1
+                   ${loanSql.deletedFilter('l')}
+                   AND l.transaction_date >= $2
+                   AND l.transaction_date < $3`,
+                [id, monthlyWindow.start, monthlyWindow.end]
+            ],
+            [
+                `SELECT
+                   l.status,
+                   COUNT(*)::int AS count,
+                   COALESCE(SUM(l.amount), 0) AS amount
+                 FROM loans l
+                 WHERE l.merchant_id = $1
+                   ${loanSql.deletedFilter('l')}
+                   AND l.transaction_date >= $2
+                   AND l.transaction_date < $3
+                 GROUP BY l.status
+                 ORDER BY count DESC, amount DESC`,
+                [id, monthlyWindow.start, monthlyWindow.end]
+            ],
+            [
+                `SELECT
+                   c.id,
+                   c.full_name,
+                   c.mobile_number,
+                   COUNT(l.id)::int AS loans_count,
+                   COALESCE(SUM(l.amount), 0) AS total_amount,
+                   COALESCE(SUM(CASE WHEN l.status = 'Paid' THEN l.amount ELSE 0 END), 0) AS paid_amount
+                 FROM loans l
+                 JOIN customers c ON c.id = l.customer_id
+                 WHERE l.merchant_id = $1
+                   ${loanSql.deletedFilter('l')}
+                   AND l.transaction_date >= $2
+                   AND l.transaction_date < $3
+                 GROUP BY c.id, c.full_name, c.mobile_number
+                 ORDER BY total_amount DESC, loans_count DESC
+                 LIMIT 8`,
+                [id, monthlyWindow.start, monthlyWindow.end]
+            ],
+            [
+                `SELECT
+                   TO_CHAR(DATE_TRUNC('week', l.transaction_date), 'IYYY-IW') AS week_key,
+                   MIN(DATE_TRUNC('week', l.transaction_date)) AS week_start,
+                   COUNT(*)::int AS loans_count,
+                   COALESCE(SUM(l.amount), 0) AS total_amount
+                 FROM loans l
+                 WHERE l.merchant_id = $1
+                   ${loanSql.deletedFilter('l')}
+                   AND l.transaction_date >= $2
+                   AND l.transaction_date < $3
+                 GROUP BY DATE_TRUNC('week', l.transaction_date)
+                 ORDER BY week_start ASC`,
+                [id, monthlyWindow.start, monthlyWindow.end]
+            ],
+            [
+                `SELECT
+                   COUNT(*)::int AS total_loans,
+                   COALESCE(SUM(l.amount), 0) AS total_disbursed,
+                   COALESCE(SUM(
+                     CASE
+                       WHEN l.status = 'Paid' AND (${loanSql.isNajizCase('l')})
+                         THEN ${loanSql.najizCollectedPaid('l')}
+                       WHEN l.status = 'Paid'
+                         THEN l.amount
+                       ELSE 0
+                     END
+                   ), 0) AS total_collected,
+                   COALESCE(SUM(CASE WHEN l.status = 'Active' THEN l.amount ELSE 0 END), 0) AS active_amount
+                 FROM loans l
+                 WHERE l.merchant_id = $1
+                   ${loanSql.deletedFilter('l')}
+                   AND l.transaction_date >= $2
+                   AND l.transaction_date < $3`,
+                [id, monthlyWindow.prevStart, monthlyWindow.prevEnd]
+            ],
+        ]);
+
+        const summaryRow = summaryRes.rows[0] || {};
+        const customersRow = customerRes.rows[0] || {};
+        const previousRow = previousSummaryRes.rows[0] || {};
+
+        const totalLoans = toCount(summaryRow.total_loans);
+        const totalDisbursed = toPositiveNumber(summaryRow.total_disbursed);
+        const totalCollected = toPositiveNumber(summaryRow.total_collected);
+        const activeAmount = toPositiveNumber(summaryRow.active_amount);
+        const raisedAmount = toPositiveNumber(summaryRow.raised_amount);
+        const uniqueCustomers = toCount(customersRow.unique_customers);
+        const activeCustomers = toCount(customersRow.active_customers);
+
+        const previousDisbursed = toPositiveNumber(previousRow.total_disbursed);
+        const previousLoans = toCount(previousRow.total_loans);
+        const previousCollected = toPositiveNumber(previousRow.total_collected);
+
+        const collectionRate = totalDisbursed > 0
+            ? Number(((totalCollected / totalDisbursed) * 100).toFixed(2))
+            : 0;
+        const activeSharePercent = totalDisbursed > 0
+            ? Number(((activeAmount / totalDisbursed) * 100).toFixed(2))
+            : 0;
+
+        const statusBreakdown = statusRes.rows.map((row) => ({
+            status: row.status,
+            count: toCount(row.count),
+            amount: toPositiveNumber(row.amount),
+        }));
+
+        const summary = {
+            totalLoans,
+            totalDisbursed,
+            totalCollected,
+            activeAmount,
+            raisedAmount,
+            uniqueCustomers,
+            activeCustomers,
+            collectionRate,
+            activeSharePercent,
+            averageLoanAmount: totalLoans > 0 ? Number((totalDisbursed / totalLoans).toFixed(2)) : 0,
+            growth: {
+                disbursedChangePercent: calcChangePercent(totalDisbursed, previousDisbursed),
+                loanCountChangePercent: calcChangePercent(totalLoans, previousLoans),
+                collectedChangePercent: calcChangePercent(totalCollected, previousCollected),
+            },
+        };
+
+        const payload = {
+            period: {
+                year: monthlyWindow.year,
+                month: monthlyWindow.month,
+                monthName: monthlyWindow.monthName,
+                startDate: monthlyWindow.startDate,
+                endDate: monthlyWindow.endDate,
+            },
+            summary,
+            statusBreakdown,
+            weeklyTrend: weeklyRes.rows.map((row) => ({
+                weekKey: row.week_key,
+                weekStart: formatIsoDate(new Date(row.week_start)),
+                loansCount: toCount(row.loans_count),
+                totalAmount: toPositiveNumber(row.total_amount),
+            })),
+            topCustomers: topCustomersRes.rows.map((row) => ({
+                id: row.id,
+                fullName: row.full_name,
+                mobileNumber: row.mobile_number,
+                loansCount: toCount(row.loans_count),
+                totalAmount: toPositiveNumber(row.total_amount),
+                paidAmount: toPositiveNumber(row.paid_amount),
+            })),
+            insights: buildMonthlyInsights({ summary, statusBreakdown }),
+            recommendations: buildMonthlyRecommendations({ summary, statusBreakdown }),
+            generatedAt: new Date().toISOString(),
+        };
+
+        if (useCache) {
+            await setCache(cacheKey, payload, Number.isFinite(ttlSeconds) ? ttlSeconds : 60);
+            res.set('Cache-Control', cacheHeader);
+        } else if (forceFresh) {
+            res.set('Cache-Control', 'no-store');
+        }
+
+        return res.json(payload);
+    } catch (err) {
+        console.error('Monthly summary error:', err);
+        return res.status(500).json({ error: 'Failed to fetch monthly summary' });
     }
 });
 

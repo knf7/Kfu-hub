@@ -120,6 +120,60 @@ describe('Reports / Analytics Controller', () => {
         });
     });
 
+    describe('GET /api/reports/monthly-summary', () => {
+        it('should return monthly summary with insights and recommendations', async () => {
+            db.query
+                .mockResolvedValueOnce({ rows: [{ session_version: 1 }] }) // Auth
+                .mockResolvedValueOnce({
+                    rows: [{
+                        total_loans: 4,
+                        total_disbursed: '12000',
+                        total_collected: '8000',
+                        active_amount: '3000',
+                        raised_amount: '1000'
+                    }]
+                }) // summaryRes
+                .mockResolvedValueOnce({
+                    rows: [{ unique_customers: 3, active_customers: 2 }]
+                }) // customerRes
+                .mockResolvedValueOnce({
+                    rows: [
+                        { status: 'Active', count: 2, amount: '3000' },
+                        { status: 'Paid', count: 2, amount: '9000' }
+                    ]
+                }) // statusRes
+                .mockResolvedValueOnce({
+                    rows: [
+                        {
+                            id: 'cust-1',
+                            full_name: 'عميل تجريبي',
+                            mobile_number: '0501234567',
+                            loans_count: 2,
+                            total_amount: '7000',
+                            paid_amount: '4000'
+                        }
+                    ]
+                }) // topCustomersRes
+                .mockResolvedValueOnce({
+                    rows: [{ week_key: '2026-09', week_start: '2026-03-01', loans_count: 2, total_amount: '6000' }]
+                }) // weeklyRes
+                .mockResolvedValueOnce({
+                    rows: [{ total_loans: 3, total_disbursed: '10000', total_collected: '7000', active_amount: '2000' }]
+                }); // previousSummaryRes
+
+            const res = await request(app)
+                .get('/api/reports/monthly-summary?year=2026&month=3')
+                .set('Cookie', [`token=${token}`]);
+
+            expect(res.statusCode).toEqual(200);
+            expect(res.body.period.month).toBe(3);
+            expect(res.body.summary.totalLoans).toBe(4);
+            expect(res.body.summary.collectionRate).toBe(66.67);
+            expect(Array.isArray(res.body.insights)).toBe(true);
+            expect(Array.isArray(res.body.recommendations)).toBe(true);
+        });
+    });
+
     describe('GET /api/reports/export', () => {
         it('should export Excel with default date range', async () => {
             db.query

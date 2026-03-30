@@ -116,6 +116,7 @@ const invalidateReportsCache = async (merchantId) => {
         await clearCacheByPrefix(`reports:dashboard:${merchantId}`);
         await clearCacheByPrefix(`reports:analytics:${merchantId}:`);
         await clearCacheByPrefix(`reports:ai:${merchantId}`);
+        await clearCacheByPrefix(`reports:monthly:${merchantId}:`);
         await clearCacheByPrefix(`loans:list:${merchantId}:`);
         await clearCacheByPrefix(`customers:list:${merchantId}:`);
     } catch {
