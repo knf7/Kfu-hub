@@ -5,6 +5,70 @@ const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '24h';
 
 const { clerkClient } = require('@clerk/clerk-sdk-node');
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_PUBLIC_KEY = process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+const decodeJwtPayload = (token) => {
+    try {
+        const parts = String(token || '').split('.');
+        if (parts.length !== 3) return null;
+        return JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+    } catch {
+        return null;
+    }
+};
+
+const isLikelyLocalJwt = (token) => {
+    const payload = decodeJwtPayload(token);
+    return Boolean(payload && payload.merchantId);
+};
+
+const verifySupabaseToken = async (token) => {
+    if (!SUPABASE_URL || !SUPABASE_PUBLIC_KEY) return null;
+    const endpoint = `${String(SUPABASE_URL).replace(/\/$/, '')}/auth/v1/user`;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    try {
+        const response = await fetch(endpoint, {
+            method: 'GET',
+            headers: {
+                apikey: SUPABASE_PUBLIC_KEY,
+                Authorization: `Bearer ${token}`
+            },
+            signal: controller.signal
+        });
+        if (!response.ok) return null;
+        const supabaseUser = await response.json();
+        const email = supabaseUser?.email ? String(supabaseUser.email).toLowerCase().trim() : null;
+        if (!email) return null;
+
+        const result = await db.query(
+            `SELECT id, email, session_version
+             FROM merchants
+             WHERE lower(email) = lower($1)
+             LIMIT 1`,
+            [email]
+        );
+        if (!result.rows.length) return null;
+
+        const merchant = result.rows[0];
+        return {
+            merchantId: merchant.id,
+            userId: merchant.id,
+            email: merchant.email || email,
+            role: 'merchant',
+            permissions: null,
+            employeeId: null,
+            version: Number(merchant.session_version || 1),
+            supabaseUserId: supabaseUser?.id || null
+        };
+    } catch {
+        return null;
+    } finally {
+        clearTimeout(timeout);
+    }
+};
 
 const authenticateToken = async (req, res, next) => {
     const authHeader = req.headers['authorization'];
@@ -59,7 +123,16 @@ const authenticateToken = async (req, res, next) => {
         }
     }
 
-    // 2) Fallback: local JWT (issued by /api/auth/login)
+    // 2) Try Supabase session token (when configured and token is not our local JWT).
+    if (!isLikelyLocalJwt(token)) {
+        const supabaseUser = await verifySupabaseToken(token);
+        if (supabaseUser) {
+            req.user = supabaseUser;
+            return next();
+        }
+    }
+
+    // 3) Fallback: local JWT (issued by /api/auth/login)
     try {
         const decoded = jwt.verify(token, JWT_SECRET);
 
@@ -131,6 +204,11 @@ const injectRlsContext = async (req, res, next) => {
     // Test/mock fallback: use plain db.query client when pool/transaction is unavailable.
     if (!db.pool || typeof db.pool.connect !== 'function') {
         req.dbClient = { query: db.query };
+        req.afterCommit = async (task) => {
+            if (typeof task === 'function') {
+                await task();
+            }
+        };
         return next();
     }
 
@@ -145,9 +223,21 @@ const injectRlsContext = async (req, res, next) => {
     };
 
     try {
+        const afterCommitTasks = [];
+        req.afterCommit = (task) => {
+            if (typeof task === 'function') {
+                afterCommitTasks.push(task);
+            }
+            return Promise.resolve();
+        };
         client = await db.pool.connect();
         if (!client || typeof client.query !== 'function') {
             req.dbClient = { query: db.query };
+            req.afterCommit = async (task) => {
+                if (typeof task === 'function') {
+                    await task();
+                }
+            };
             if (client && typeof client.release === 'function') client.release();
             return next();
         }
@@ -161,8 +251,22 @@ const injectRlsContext = async (req, res, next) => {
         }
 
         req.dbClient = client;
+        let finalized = false;
+        const runAfterCommitTasks = async () => {
+            while (afterCommitTasks.length > 0) {
+                const task = afterCommitTasks.shift();
+                try {
+                    // eslint-disable-next-line no-await-in-loop
+                    await task();
+                } catch (taskErr) {
+                    console.error('Post-commit task failed:', taskErr);
+                }
+            }
+        };
 
         const cleanup = async () => {
+            if (finalized) return;
+            finalized = true;
             res.removeListener('finish', cleanup);
             res.removeListener('close', cleanup);
             try {
@@ -171,9 +275,13 @@ const injectRlsContext = async (req, res, next) => {
                         await client.query('ROLLBACK');
                     } else {
                         await client.query('COMMIT');
+                        await runAfterCommitTasks();
                     }
                 } else {
                     await resetRlsContext(client);
+                    if (!(req.dbClientBroken || res.statusCode >= 400)) {
+                        await runAfterCommitTasks();
+                    }
                 }
             } catch (err) {
                 console.error('RLS Transaction Commit Error:', err);
