@@ -123,6 +123,15 @@ const invalidateReportsCache = async (merchantId) => {
     }
 };
 
+const invalidateReportsCacheForRequest = (req, merchantId) => {
+    if (!merchantId) return;
+    if (req && typeof req.afterCommit === 'function') {
+        req.afterCommit(() => invalidateReportsCache(merchantId));
+        return;
+    }
+    invalidateReportsCache(merchantId);
+};
+
 // Allow status updates for users who can access loans page
 // (merchant always allowed, employee needs either view or add loans permission).
 const checkLoanStatusPermission = (req, res, next) => {
@@ -202,7 +211,7 @@ router.delete('/:id', authenticateToken, injectMerchantId, checkPermission('can_
             return res.status(404).json({ error: 'القرض غير موجود أو لا تملك صلاحية حذفه' });
         }
 
-        await invalidateReportsCache(merchantId);
+        await invalidateReportsCacheForRequest(req, merchantId);
         res.status(200).json({ message: 'تم حذف القرض بنجاح (Soft Delete)', id: result.rows[0].id });
     } catch (err) {
         console.error('Error deleting loan:', err);
@@ -735,7 +744,7 @@ router.post('/upload', authenticateToken, injectMerchantId, checkPermission('can
         }
 
         if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-        await invalidateReportsCache(merchantId);
+        await invalidateReportsCacheForRequest(req, merchantId);
         return res.json({
             message: 'تمت المعالجة بنجاح',
             summary: {
@@ -788,6 +797,7 @@ router.get('/', checkPermission('can_view_loans'), async (req, res) => {
         const offset = (pageNumber - 1) * limitNumber;
         const skipCount = skip_count === 'true' || req.query.skipCount === 'true';
         const forceFresh = _t !== undefined || req.query.force_fresh === '1';
+        const isNajizList = is_najiz_case === 'true';
         let conds = ['l.merchant_id = $1', 'l.deleted_at IS NULL'];
         let params = [req.merchantId];
         let i = 2;
@@ -837,13 +847,13 @@ router.get('/', checkPermission('can_view_loans'), async (req, res) => {
             skip_count: skipCount
         };
         const cacheKey = `loans:list:${req.merchantId}:${Buffer.from(JSON.stringify(cacheParams)).toString('base64')}`;
-        const useCache = !isMockedDb && !forceFresh;
+        const useCache = !isMockedDb && !forceFresh && !isNajizList;
         // Increase TTL: loans list is expensive — cache for 5 min (300s)
         const ttlSeconds = Number(process.env.LOANS_LIST_CACHE_TTL || 300);
         const swrSeconds = Math.min(120, Math.max(15, Math.floor(ttlSeconds / 2)));
         const cacheHeader = `private, max-age=${ttlSeconds}, stale-while-revalidate=${swrSeconds}, stale-if-error=600`;
-        requestState.cacheKey = cacheKey;
-        requestState.cacheHeader = cacheHeader;
+        requestState.cacheKey = useCache ? cacheKey : null;
+        requestState.cacheHeader = useCache ? cacheHeader : 'no-store';
         if (useCache) {
             const cached = await getCache(cacheKey);
             if (cached) {
@@ -932,7 +942,7 @@ router.get('/', checkPermission('can_view_loans'), async (req, res) => {
         if (useCache) {
             await setCache(cacheKey, payload, Number.isFinite(ttlSeconds) ? ttlSeconds : 30);
             res.set('Cache-Control', cacheHeader);
-        } else if (forceFresh) {
+        } else if (forceFresh || isNajizList) {
             res.set('Cache-Control', 'no-store');
         }
         res.json(payload);
@@ -998,7 +1008,7 @@ router.post('/', checkPermission('can_add_loans'), checkPlanLimit('loans'), asyn
                 isRaised ? (najiz_fee_percentage !== undefined ? najiz_fee_percentage : 30) : null
             ]
         );
-        await invalidateReportsCache(req.merchantId);
+        await invalidateReportsCacheForRequest(req, req.merchantId);
         res.status(201).json({ message: 'Loan created successfully', loan: enrichLoan(r.rows[0]) });
     } catch (err) {
         console.error('Create loan error:', err);
@@ -1061,7 +1071,7 @@ router.patch('/:id/status', checkLoanStatusPermission, async (req, res) => {
 
         const r = await req.dbClient.query(query, [status, id, req.merchantId, collectedAmountParam, isNajizCaseParam]);
         if (r.rows.length === 0) return res.status(404).json({ error: 'Loan not found' });
-        await invalidateReportsCache(req.merchantId);
+        await invalidateReportsCacheForRequest(req, req.merchantId);
         res.json({ message: 'Status updated successfully', loan: enrichLoan(r.rows[0]) });
     } catch (err) {
         console.error('Update status error:', err);
@@ -1145,77 +1155,8 @@ router.patch('/:id/najiz', checkPermission('can_add_loans'), async (req, res) =>
             return res.status(404).json({ error: 'Loan not found or unauthorized' });
         }
 
-        const sameNullableNumber = (a, b) => {
-            if (a === null || a === undefined || a === '') return (b === null || b === undefined || b === '');
-            if (b === null || b === undefined || b === '') return false;
-            return Number(a) === Number(b);
-        };
-        const normalizeNullableText = (value) => {
-            if (value === null || value === undefined || value === '') return null;
-            return String(value).trim();
-        };
-        const normalizeDateOnly = (value) => {
-            if (value === null || value === undefined || value === '') return null;
-            const date = new Date(value);
-            if (Number.isNaN(date.getTime())) return String(value).slice(0, 10);
-            return date.toISOString().slice(0, 10);
-        };
-
-        const expected = {
-            is_najiz_case: value.is_najiz_case !== undefined ? Boolean(value.is_najiz_case) : undefined,
-            najiz_case_number: value.najiz_case_number !== undefined ? normalizeNullableText(value.najiz_case_number) : undefined,
-            najiz_status: value.najiz_status !== undefined ? normalizeNullableText(value.najiz_status) : undefined,
-            najiz_case_amount: value.najiz_case_amount !== undefined ? normalizeOptionalAmountInput(value.najiz_case_amount) : undefined,
-            najiz_collected_amount: value.najiz_collected_amount !== undefined ? normalizeOptionalAmountInput(value.najiz_collected_amount) : undefined,
-            najiz_plaintiff_name: value.najiz_plaintiff_name !== undefined ? normalizeNullableText(value.najiz_plaintiff_name) : undefined,
-            najiz_plaintiff_national_id: value.najiz_plaintiff_national_id !== undefined ? normalizeNullableText(value.najiz_plaintiff_national_id) : undefined,
-            najiz_raised_date: value.najiz_raised_date !== undefined ? normalizeDateOnly(value.najiz_raised_date) : undefined
-        };
-
-        const matchesExpected = (loanRow) => {
-            if (expected.is_najiz_case !== undefined && Boolean(loanRow.is_najiz_case) !== expected.is_najiz_case) return false;
-            if (expected.najiz_case_number !== undefined && normalizeNullableText(loanRow.najiz_case_number) !== expected.najiz_case_number) return false;
-            if (expected.najiz_status !== undefined && normalizeNullableText(loanRow.najiz_status) !== expected.najiz_status) return false;
-            if (expected.najiz_case_amount !== undefined && !sameNullableNumber(loanRow.najiz_case_amount, expected.najiz_case_amount)) return false;
-            if (expected.najiz_collected_amount !== undefined && !sameNullableNumber(loanRow.najiz_collected_amount, expected.najiz_collected_amount)) return false;
-            if (expected.najiz_plaintiff_name !== undefined && normalizeNullableText(loanRow.najiz_plaintiff_name) !== expected.najiz_plaintiff_name) return false;
-            if (expected.najiz_plaintiff_national_id !== undefined && normalizeNullableText(loanRow.najiz_plaintiff_national_id) !== expected.najiz_plaintiff_national_id) return false;
-            if (expected.najiz_raised_date !== undefined && normalizeDateOnly(loanRow.najiz_raised_date) !== expected.najiz_raised_date) return false;
-            return true;
-        };
-
-        let updatedLoan = result.rows[0];
-        const needsVerification = Object.values(expected).some((field) => field !== undefined);
-        if (needsVerification && !matchesExpected(updatedLoan)) {
-            const verifySql = `SELECT *
-                               FROM loans
-                               WHERE id = $1 AND merchant_id = $2 AND deleted_at IS NULL`;
-            const verifyResult = await req.dbClient.query(verifySql, [id, req.merchantId]);
-            if (verifyResult.rows.length > 0) {
-                updatedLoan = verifyResult.rows[0];
-            }
-        }
-        if (needsVerification && !matchesExpected(updatedLoan)) {
-            const retryResult = await req.dbClient.query(updateSql, params);
-            if (retryResult.rows.length > 0) {
-                updatedLoan = retryResult.rows[0];
-            }
-            const confirmResult = await req.dbClient.query(
-                `SELECT *
-                 FROM loans
-                 WHERE id = $1 AND merchant_id = $2 AND deleted_at IS NULL`,
-                [id, req.merchantId]
-            );
-            if (confirmResult.rows.length > 0) {
-                updatedLoan = confirmResult.rows[0];
-            }
-        }
-        if (needsVerification && !matchesExpected(updatedLoan)) {
-            return res.status(409).json({ error: 'تعذر تثبيت تحديث بيانات ناجز. أعد المحاولة بعد ثوانٍ.' });
-        }
-
-        await invalidateReportsCache(req.merchantId);
-        res.json({ message: 'Najiz details updated successfully', loan: enrichLoan(updatedLoan) });
+        await invalidateReportsCacheForRequest(req, req.merchantId);
+        res.json({ message: 'Najiz details updated successfully', loan: enrichLoan(result.rows[0]) });
     } catch (err) {
         console.error('Update Najiz error:', err);
         res.status(500).json({ error: 'Failed to update Najiz details' });
@@ -1359,7 +1300,7 @@ router.patch('/:id', checkPermission('can_add_loans'), async (req, res) => {
 
         if (result.rows.length === 0) return res.status(404).json({ error: 'Loan not found or unauthorized' });
 
-        await invalidateReportsCache(req.merchantId);
+        await invalidateReportsCacheForRequest(req, req.merchantId);
         res.json({ message: 'Loan updated successfully', loan: enrichLoan(result.rows[0]) });
     } catch (err) {
         console.error('Update loan error:', err);
