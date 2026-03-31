@@ -59,6 +59,34 @@
   font-size: 0.82rem;
 }
 
+.mr-mode-switch {
+  margin-top: 10px;
+  display: inline-flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.mr-mode-switch button {
+  min-height: 34px;
+  border-radius: 999px;
+  padding: 0 12px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--mr-text);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(255, 255, 255, 0.65);
+}
+
+.mr-mode-switch button.active {
+  color: #e0f2fe;
+  border-color: rgba(14, 116, 144, 0.4);
+  background: linear-gradient(135deg, #0284c7, #1d4ed8);
+}
+
+[data-theme="dark"] .mr-mode-switch button {
+  background: rgba(15, 23, 42, 0.56);
+}
+
 .mr-controls {
   display: inline-flex;
   flex-wrap: wrap;
@@ -324,6 +352,101 @@
   grid-column: span 2;
 }
 
+.mr-card.tracking {
+  background:
+    radial-gradient(620px 220px at 100% 0%, rgba(56, 189, 248, 0.12), transparent 62%),
+    var(--mr-panel);
+}
+
+.mr-tracking-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.mr-tracking-head p {
+  margin: 4px 0 0;
+  color: var(--mr-muted);
+  font-size: 0.83rem;
+}
+
+.mr-tracking-badges {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.mr-tracking-badges span {
+  min-height: 30px;
+  border-radius: 999px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.76rem;
+  font-weight: 800;
+  color: #075985;
+  background: rgba(186, 230, 253, 0.55);
+  border: 1px solid rgba(14, 165, 233, 0.3);
+}
+
+[data-theme="dark"] .mr-tracking-badges span {
+  color: #e0f2fe;
+  background: rgba(14, 116, 144, 0.3);
+}
+
+.mr-tracking-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.mr-tracking-col {
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.44);
+}
+
+[data-theme="dark"] .mr-tracking-col {
+  background: rgba(15, 23, 42, 0.42);
+}
+
+.mr-tracking-col h3 {
+  margin: 0 0 8px;
+  color: var(--mr-text);
+  font-size: 0.9rem;
+}
+
+.mr-track-table {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.mr-track-row {
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  padding: 8px;
+  display: grid;
+  grid-template-columns: 1.3fr 1fr 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.mr-track-row strong,
+.mr-track-row b,
+.mr-track-row em {
+  color: var(--mr-text);
+  font-style: normal;
+}
+
+.mr-track-row small {
+  color: var(--mr-muted);
+  font-size: 0.77rem;
+}
+
 .mr-weeks {
   display: flex;
   flex-direction: column;
@@ -392,6 +515,10 @@
   .mr-card.wide {
     grid-column: auto;
   }
+
+  .mr-tracking-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 640px) {
@@ -412,6 +539,10 @@
   }
 
   .mr-week-row {
+    grid-template-columns: 1fr;
+  }
+
+  .mr-track-row {
     grid-template-columns: 1fr;
   }
 }

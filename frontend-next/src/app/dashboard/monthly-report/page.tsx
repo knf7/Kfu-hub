@@ -61,6 +61,38 @@ type MonthlyReportPayload = {
     totalAmount: number;
     paidAmount: number;
   }>;
+  tracking?: {
+    najizCases?: Array<{
+      loanId: string;
+      customerId: string;
+      customerName: string;
+      mobileNumber: string;
+      amount: number;
+      collectedAmount: number;
+      remainingAmount: number;
+      status: string;
+      najizCaseNumber?: string | null;
+      najizStatus?: string | null;
+      transactionDate?: string | null;
+    }>;
+    monthEndUnpaid?: Array<{
+      loanId: string;
+      customerId: string;
+      customerName: string;
+      mobileNumber: string;
+      amount: number;
+      status: string;
+      hasNajizCase: boolean;
+      najizCaseNumber?: string | null;
+      transactionDate?: string | null;
+    }>;
+    integration?: {
+      najizCasesCount: number;
+      unpaidAfterMonthEndCount: number;
+      overlappedCount: number;
+      trackedCoveragePercent: number;
+    };
+  };
   insights?: Array<{
     type: 'success' | 'warning' | 'danger' | 'info' | string;
     priority: number;
@@ -87,9 +119,31 @@ const STATUS_COLORS: Record<string, string> = {
   Raised: '#8b5cf6',
 };
 
+const MONTH_LABELS = [
+  'يناير',
+  'فبراير',
+  'مارس',
+  'أبريل',
+  'مايو',
+  'يونيو',
+  'يوليو',
+  'أغسطس',
+  'سبتمبر',
+  'أكتوبر',
+  'نوفمبر',
+  'ديسمبر',
+];
+
 const formatMoney = (value: number | null | undefined) => {
   const safe = Number(value || 0);
   return `${safe.toLocaleString('en-US')} ر.س`;
+};
+
+const formatDate = (value?: string | null) => {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleDateString('ar-SA');
 };
 
 const defaultPeriod = () => {
@@ -109,6 +163,7 @@ export default function MonthlyReportPage() {
   const [month, setMonth] = useState(initial.month);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState<'xlsx' | 'csv' | 'json' | 'yearly' | null>(null);
+  const [focusTracking, setFocusTracking] = useState(true);
   const [report, setReport] = useState<MonthlyReportPayload | null>(null);
 
   const years = useMemo(() => {
@@ -120,6 +175,14 @@ export default function MonthlyReportPage() {
     const counts = (report?.statusBreakdown || []).map((row) => Number(row.count || 0));
     return counts.length ? Math.max(...counts, 1) : 1;
   }, [report?.statusBreakdown]);
+  const najizCases = report?.tracking?.najizCases || [];
+  const monthEndUnpaid = report?.tracking?.monthEndUnpaid || [];
+  const trackingIntegration = report?.tracking?.integration || {
+    najizCasesCount: 0,
+    unpaidAfterMonthEndCount: 0,
+    overlappedCount: 0,
+    trackedCoveragePercent: 0,
+  };
 
   const fetchReport = async (force = false) => {
     setLoading(true);
@@ -242,6 +305,34 @@ export default function MonthlyReportPage() {
 
       rows.push(['توصيات']);
       (report?.recommendations || []).forEach((item) => rows.push([item]));
+      rows.push([]);
+      rows.push(['متابعة ناجز']);
+      rows.push(['العميل', 'الجوال', 'المبلغ', 'المحصل', 'رقم القضية', 'الحالة', 'تاريخ المعاملة']);
+      (report?.tracking?.najizCases || []).forEach((item) => {
+        rows.push([
+          item.customerName || '-',
+          item.mobileNumber || '-',
+          Number(item.amount || 0),
+          Number(item.collectedAmount || 0),
+          item.najizCaseNumber || '-',
+          STATUS_LABELS[item.status] || item.status,
+          item.transactionDate || '-',
+        ]);
+      });
+      rows.push([]);
+      rows.push(['غير المسددين بعد نهاية الشهر']);
+      rows.push(['العميل', 'الجوال', 'المبلغ', 'الحالة', 'مرتبط بناجز', 'رقم القضية', 'تاريخ المعاملة']);
+      (report?.tracking?.monthEndUnpaid || []).forEach((item) => {
+        rows.push([
+          item.customerName || '-',
+          item.mobileNumber || '-',
+          Number(item.amount || 0),
+          STATUS_LABELS[item.status] || item.status,
+          item.hasNajizCase ? 'نعم' : 'لا',
+          item.najizCaseNumber || '-',
+          item.transactionDate || '-',
+        ]);
+      });
 
       const csv = rows.map((row) => row.map(toCsvCell).join(',')).join('\n');
       downloadTextFile(csv, `monthly-report-${fileStamp}.csv`, 'text/csv;charset=utf-8;', true);
@@ -296,6 +387,22 @@ export default function MonthlyReportPage() {
         <div>
           <h1>التقرير الشهري الذكي</h1>
           <p>ملخص تشغيلي للشهر المنصرم يساعدك على فهم الأداء، المخاطر، وخطوات المتابعة القادمة.</p>
+          <div className="mr-mode-switch" role="tablist" aria-label="وضع العرض">
+            <button
+              type="button"
+              className={focusTracking ? 'active' : ''}
+              onClick={() => setFocusTracking(true)}
+            >
+              متابعة ناجز والمتأخرين
+            </button>
+            <button
+              type="button"
+              className={!focusTracking ? 'active' : ''}
+              onClick={() => setFocusTracking(false)}
+            >
+              عرض شامل
+            </button>
+          </div>
           {report?.generatedAt && (
             <span className="mr-generated-at">
               آخر توليد: {new Date(report.generatedAt).toLocaleString('ar-SA')}
@@ -316,7 +423,7 @@ export default function MonthlyReportPage() {
             الشهر
             <select value={month} onChange={(event) => setMonth(Number(event.target.value))}>
               {Array.from({ length: 12 }, (_v, index) => (
-                <option key={index + 1} value={index + 1}>{index + 1}</option>
+                <option key={index + 1} value={index + 1}>{MONTH_LABELS[index]}</option>
               ))}
             </select>
           </label>
@@ -376,6 +483,78 @@ export default function MonthlyReportPage() {
           </section>
 
           <section className="mr-grid">
+            <article className="mr-card wide tracking">
+              <div className="mr-tracking-head">
+                <div>
+                  <h2>متابعة الشهر: قضايا ناجز + غير المسددين بعد نهاية الشهر</h2>
+                  <p>
+                    الشهر المختار: {MONTH_LABELS[month - 1]} {year}
+                  </p>
+                </div>
+                <div className="mr-tracking-badges">
+                  <span>قضايا ناجز: {trackingIntegration.najizCasesCount}</span>
+                  <span>غير مسددين: {trackingIntegration.unpaidAfterMonthEndCount}</span>
+                  <span>ترابط: {trackingIntegration.overlappedCount}</span>
+                  <span>تغطية: {trackingIntegration.trackedCoveragePercent}%</span>
+                </div>
+              </div>
+
+              <div className="mr-tracking-grid">
+                <div className="mr-tracking-col">
+                  <h3>قضايا ناجز في هذا الشهر</h3>
+                  <div className="mr-track-table">
+                    {najizCases.length === 0 && <p className="mr-empty">لا توجد قضايا ناجز في الشهر المحدد.</p>}
+                    {najizCases.map((item) => (
+                      <div key={item.loanId} className="mr-track-row">
+                        <div>
+                          <strong>{item.customerName || '—'}</strong>
+                          <small>{item.mobileNumber || 'بدون جوال'}</small>
+                        </div>
+                        <div>
+                          <b>{formatMoney(item.amount)}</b>
+                          <small>محصل: {formatMoney(item.collectedAmount)}</small>
+                        </div>
+                        <div>
+                          <em>{STATUS_LABELS[item.status] || item.status}</em>
+                          <small>{item.najizCaseNumber || 'بدون رقم قضية'}</small>
+                        </div>
+                        <div>
+                          <small>{formatDate(item.transactionDate)}</small>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="mr-tracking-col">
+                  <h3>قروض الشهر غير المسددة حتى الآن</h3>
+                  <div className="mr-track-table">
+                    {monthEndUnpaid.length === 0 && <p className="mr-empty">كل قروض الشهر مسددة أو ملغية.</p>}
+                    {monthEndUnpaid.map((item) => (
+                      <div key={item.loanId} className="mr-track-row">
+                        <div>
+                          <strong>{item.customerName || '—'}</strong>
+                          <small>{item.mobileNumber || 'بدون جوال'}</small>
+                        </div>
+                        <div>
+                          <b>{formatMoney(item.amount)}</b>
+                          <small>{item.hasNajizCase ? 'مرتبط بناجز' : 'بدون ناجز'}</small>
+                        </div>
+                        <div>
+                          <em>{STATUS_LABELS[item.status] || item.status}</em>
+                          <small>{item.najizCaseNumber || '—'}</small>
+                        </div>
+                        <div>
+                          <small>{formatDate(item.transactionDate)}</small>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </article>
+            {!focusTracking && (
+              <>
             <article className="mr-card">
               <h2>التغير عن الشهر السابق</h2>
               <div className="mr-growth">
@@ -475,6 +654,8 @@ export default function MonthlyReportPage() {
                 ))}
               </div>
             </article>
+              </>
+            )}
           </section>
         </>
       )}

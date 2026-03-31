@@ -159,7 +159,34 @@ describe('Reports / Analytics Controller', () => {
                 }) // weeklyRes
                 .mockResolvedValueOnce({
                     rows: [{ total_loans: 3, total_disbursed: '10000', total_collected: '7000', active_amount: '2000' }]
-                }); // previousSummaryRes
+                }) // previousSummaryRes
+                .mockResolvedValueOnce({
+                    rows: [{
+                        loan_id: 'loan-1',
+                        customer_id: 'cust-1',
+                        full_name: 'عميل تجريبي',
+                        mobile_number: '0501234567',
+                        tracked_amount: '1000',
+                        najiz_collected_amount: '300',
+                        status: 'Raised',
+                        najiz_case_number: 'NJ-01',
+                        najiz_status: 'قيد المتابعة',
+                        transaction_date: '2026-03-10'
+                    }]
+                }) // najizTrackingRes
+                .mockResolvedValueOnce({
+                    rows: [{
+                        loan_id: 'loan-1',
+                        customer_id: 'cust-1',
+                        full_name: 'عميل تجريبي',
+                        mobile_number: '0501234567',
+                        amount: '1000',
+                        status: 'Active',
+                        najiz_case_number: 'NJ-01',
+                        has_najiz_case: true,
+                        transaction_date: '2026-03-10'
+                    }]
+                }); // monthEndUnpaidRes
 
             const res = await request(app)
                 .get('/api/reports/monthly-summary?year=2026&month=3')
@@ -171,6 +198,9 @@ describe('Reports / Analytics Controller', () => {
             expect(res.body.summary.collectionRate).toBe(66.67);
             expect(Array.isArray(res.body.insights)).toBe(true);
             expect(Array.isArray(res.body.recommendations)).toBe(true);
+            expect(Array.isArray(res.body.tracking?.najizCases)).toBe(true);
+            expect(Array.isArray(res.body.tracking?.monthEndUnpaid)).toBe(true);
+            expect(res.body.tracking?.integration?.overlappedCount).toBe(1);
         });
     });
 

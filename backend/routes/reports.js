@@ -767,7 +767,9 @@ router.get('/monthly-summary', checkPermission('can_view_analytics'), async (req
             statusRes,
             topCustomersRes,
             weeklyRes,
-            previousSummaryRes
+            previousSummaryRes,
+            najizTrackingRes,
+            monthEndUnpaidRes
         ] = await runBatchQueries(queryClient, [
             [
                 `SELECT
@@ -871,6 +873,59 @@ router.get('/monthly-summary', checkPermission('can_view_analytics'), async (req
                    AND l.transaction_date < $3`,
                 [id, monthlyWindow.prevStart, monthlyWindow.prevEnd]
             ],
+            [
+                `SELECT
+                   l.id AS loan_id,
+                   l.customer_id,
+                   c.full_name,
+                   c.mobile_number,
+                   COALESCE(l.najiz_case_amount, l.amount) AS tracked_amount,
+                   COALESCE(l.najiz_collected_amount, 0) AS najiz_collected_amount,
+                   l.status,
+                   l.najiz_case_number,
+                   l.najiz_status,
+                   l.transaction_date
+                 FROM loans l
+                 JOIN customers c ON c.id = l.customer_id
+                 WHERE l.merchant_id = $1
+                   ${loanSql.deletedFilter('l')}
+                   AND l.transaction_date >= $2
+                   AND l.transaction_date < $3
+                   AND (
+                     (${loanSql.isNajizCase('l')})
+                     OR l.status = 'Raised'
+                     OR l.najiz_case_number IS NOT NULL
+                   )
+                 ORDER BY l.transaction_date DESC
+                 LIMIT 200`,
+                [id, monthlyWindow.start, monthlyWindow.end]
+            ],
+            [
+                `SELECT
+                   l.id AS loan_id,
+                   l.customer_id,
+                   c.full_name,
+                   c.mobile_number,
+                   l.amount,
+                   l.status,
+                   l.najiz_case_number,
+                   l.transaction_date,
+                   (
+                     (${loanSql.isNajizCase('l')})
+                     OR l.status = 'Raised'
+                     OR l.najiz_case_number IS NOT NULL
+                   ) AS has_najiz_case
+                 FROM loans l
+                 JOIN customers c ON c.id = l.customer_id
+                 WHERE l.merchant_id = $1
+                   ${loanSql.deletedFilter('l')}
+                   AND l.transaction_date >= $2
+                   AND l.transaction_date < $3
+                   AND l.status NOT IN ('Paid', 'Cancelled')
+                 ORDER BY l.transaction_date DESC
+                 LIMIT 200`,
+                [id, monthlyWindow.start, monthlyWindow.end]
+            ],
         ]);
 
         const summaryRow = summaryRes.rows[0] || {};
@@ -901,6 +956,38 @@ router.get('/monthly-summary', checkPermission('can_view_analytics'), async (req
             count: toCount(row.count),
             amount: toPositiveNumber(row.amount),
         }));
+        const najizCases = najizTrackingRes.rows.map((row) => ({
+            loanId: row.loan_id,
+            customerId: row.customer_id,
+            customerName: row.full_name,
+            mobileNumber: row.mobile_number,
+            amount: toPositiveNumber(row.tracked_amount),
+            collectedAmount: toPositiveNumber(row.najiz_collected_amount),
+            remainingAmount: Math.max(
+                toPositiveNumber(row.tracked_amount) - toPositiveNumber(row.najiz_collected_amount),
+                0
+            ),
+            status: row.status,
+            najizCaseNumber: row.najiz_case_number || null,
+            najizStatus: row.najiz_status || null,
+            transactionDate: row.transaction_date ? formatIsoDate(new Date(row.transaction_date)) : null,
+        }));
+        const monthEndUnpaid = monthEndUnpaidRes.rows.map((row) => ({
+            loanId: row.loan_id,
+            customerId: row.customer_id,
+            customerName: row.full_name,
+            mobileNumber: row.mobile_number,
+            amount: toPositiveNumber(row.amount),
+            status: row.status,
+            hasNajizCase: Boolean(row.has_najiz_case),
+            najizCaseNumber: row.najiz_case_number || null,
+            transactionDate: row.transaction_date ? formatIsoDate(new Date(row.transaction_date)) : null,
+        }));
+        const najizLoanIds = new Set(najizCases.map((item) => item.loanId));
+        const overlappedCount = monthEndUnpaid.filter((item) => item.hasNajizCase || najizLoanIds.has(item.loanId)).length;
+        const coveragePercent = monthEndUnpaid.length > 0
+            ? Number(((overlappedCount / monthEndUnpaid.length) * 100).toFixed(2))
+            : 0;
 
         const summary = {
             totalLoans,
@@ -944,6 +1031,16 @@ router.get('/monthly-summary', checkPermission('can_view_analytics'), async (req
                 totalAmount: toPositiveNumber(row.total_amount),
                 paidAmount: toPositiveNumber(row.paid_amount),
             })),
+            tracking: {
+                najizCases,
+                monthEndUnpaid,
+                integration: {
+                    najizCasesCount: najizCases.length,
+                    unpaidAfterMonthEndCount: monthEndUnpaid.length,
+                    overlappedCount,
+                    trackedCoveragePercent: coveragePercent,
+                },
+            },
             insights: buildMonthlyInsights({ summary, statusBreakdown }),
             recommendations: buildMonthlyRecommendations({ summary, statusBreakdown }),
             generatedAt: new Date().toISOString(),
