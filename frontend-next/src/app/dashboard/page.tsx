@@ -73,10 +73,11 @@ const writePersisted = (key: string, data: any) => {
 };
 
 const QUICK_ACTIONS = [
-    { Icon: Plus, label: 'إضافة قرض جديد', sub: 'تسجيل عميل وقرض', path: '/dashboard/loans/new', color: 'var(--coral)' },
+    { Icon: Rocket, label: 'الإدخال السريع', sub: 'إنشاء قرض عبر الشات الذكي', path: '/dashboard/quick-entry', color: 'var(--info)' },
+    { Icon: ClipboardList, label: 'تقرير شهري', sub: 'ملخص مفصل لأداء الشهر', path: '/dashboard/monthly-report', color: 'var(--warning)' },
+    { Icon: Plus, label: 'إضافة قرض جديد', sub: 'تسجيل عميل وقرض يدوي', path: '/dashboard/loans/new', color: 'var(--coral)' },
     { Icon: Users, label: 'إدارة العملاء', sub: 'عرض وتعديل البيانات', path: '/dashboard/customers', color: 'var(--info)' },
     { Icon: Upload, label: 'رفع ملف Excel', sub: 'استيراد بيانات دفعي', path: '/dashboard/loans/import', color: 'var(--success)' },
-    { Icon: BarChart3, label: 'التحليلات', sub: 'تقارير وإحصائيات', path: '/dashboard/analytics', color: 'var(--warning)' },
 ];
 
 const INSIGHT_ICONS: Record<string, React.ReactNode> = {
@@ -138,31 +139,6 @@ const ToastContainer = React.memo(function ToastContainer({ toasts }: { toasts: 
     );
 });
 
-// ─── Overdue Marquee ──────────────────────────
-const OverdueMarquee = React.memo(function OverdueMarquee({ clients }: { clients: any[] }) {
-    const safeClients = Array.isArray(clients) ? clients : [];
-    const full = safeClients.length > 0 ? [...safeClients, ...safeClients] : [];
-    if (full.length === 0) return null;
-    return (
-        <div className="overdue-marquee-wrap fade-up">
-            <div className="marquee-label-pill">
-                <AlertTriangle size={14} color="var(--danger)" />
-                <span>متأخرون عن السداد</span>
-            </div>
-            <div className="marquee-track">
-                <div className="marquee-inner">
-                    {full.map((c: any, i: number) => (
-                        <div key={i} className="marquee-chip">
-                            <User size={12} color="var(--danger)" />
-                            <span className="marquee-name">{c.full_name || c}</span>
-                            {c.debt && <span className="marquee-debt">{parseFloat(c.debt).toLocaleString('en-US')} ﷼</span>}
-                        </div>
-                    ))}
-                </div>
-            </div>
-        </div>
-    );
-});
 
 // ─── AI Insight Card ──────────────────────────
 const InsightCard = React.memo(function InsightCard({ ins }: { ins: any }) {
@@ -240,8 +216,8 @@ export default function DashboardPage() {
     const queryClient = useQueryClient();
     const [chartInterval, setChartInterval] = useState('week');
     const [toasts, setToasts] = useState<any[]>([]);
+    const [rabbitInput, setRabbitInput] = useState('');
     const [merchant, setMerchant] = useState<any>({});
-    const [visibleCategories, setVisibleCategories] = useState<string[]>(() => STAT_CATEGORIES.map((c) => c.id));
     const [todayLabel, setTodayLabel] = useState('');
     const notifiedRef = useRef({ overdue: false, highRisk: false, summaryError: false });
     const [enableHeavyFetch, setEnableHeavyFetch] = useState(false);
@@ -386,16 +362,6 @@ export default function DashboardPage() {
         summaryQuery.refetch();
     }, { scopes: ['dashboard', 'reports', 'loans', 'customers', 'najiz'], debounceMs: 250 });
 
-    const toggleCategory = useCallback((id: string) => {
-        setVisibleCategories((prev) => (
-            prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
-        ));
-    }, []);
-
-    const showAllCategories = useCallback(() => {
-        setVisibleCategories(STAT_CATEGORIES.map((c) => c.id));
-    }, []);
-
     useEffect(() => {
         try {
             const m = JSON.parse(localStorage.getItem('merchant') || '{}');
@@ -509,6 +475,17 @@ export default function DashboardPage() {
     const handleNajizClick = useCallback(() => router.push('/dashboard/najiz'), [router]);
     const handleDelayedClick = useCallback(() => router.push('/dashboard/loans?delayed=true'), [router]);
     const handleNewLoanClick = useCallback(() => router.push('/dashboard/loans/new'), [router]);
+    const handleRabbitSubmit = useCallback((event: React.FormEvent) => {
+        event.preventDefault();
+        const payload = String(rabbitInput || '').trim();
+        if (!payload) return;
+        router.push(`/dashboard/quick-entry?q=${encodeURIComponent(payload)}&source=rabbit-dashboard`);
+    }, [rabbitInput, router]);
+    const rabbitPresets = useMemo(() => ([
+        'عميل جديد اسمه أحمد، الهوية 1023456789، الجوال 0551234567، مبلغ 18000',
+        'عميل سابق الهوية 1034567890 مبلغ 22000 نسبة الربح 12%',
+        'تأكيد إنشاء السجل الحالي',
+    ]), []);
 
     const statCards = useMemo(() => ([
         {
@@ -608,10 +585,11 @@ export default function DashboardPage() {
         },
     ]), [ai.growthRate, handleDelayedClick, handleNajizClick, metrics, najizSummary]);
 
-    const visibleStats = useMemo(
-        () => statCards.filter((card) => visibleCategories.includes(card.category)),
-        [statCards, visibleCategories]
-    );
+    // Select the most crucial stats to display by default (simplified UI):
+    const visibleStats = useMemo(() => {
+        const priorityIds = ['totalDebt', 'totalProfit', 'totalCustomers', 'najizRemaining', 'overdueCustomers'];
+        return statCards.filter((card) => priorityIds.includes(card.id));
+    }, [statCards]);
 
     if (isInitialLoading) {
         return (
@@ -641,6 +619,9 @@ export default function DashboardPage() {
                     </p>
                 </div>
                 <div className="db-actions">
+                    <button className="btn btn-quick-mini" onClick={() => router.push('/dashboard/quick-entry')}>
+                        <Rocket size={15} /> الإدخال السريع
+                    </button>
                     <button className="btn btn-secondary" onClick={handleExportCSV}>
                         <Download size={16} /> تصدير CSV
                     </button>
@@ -650,45 +631,56 @@ export default function DashboardPage() {
                 </div>
             </div>
 
-            {/* Overdue Marquee */}
-            <OverdueMarquee clients={overdueClients} />
-
-            {/* Stats Grid */}
-            <div className="stats-toolbar fade-up">
-                <div className="stats-toolbar-title">تصنيفات البطاقات</div>
-                <div className="stats-toggle-group">
-                    {STAT_CATEGORIES.map((category) => {
-                        const isActive = visibleCategories.includes(category.id);
-                        return (
-                            <button
-                                key={category.id}
-                                type="button"
-                                className={`stats-toggle ${isActive ? 'active' : ''}`}
-                                onClick={() => toggleCategory(category.id)}
-                                aria-pressed={isActive}
-                            >
-                                <category.Icon size={14} />
-                                {category.label}
-                            </button>
-                        );
-                    })}
-                    <button type="button" className="stats-toggle stats-toggle-muted" onClick={showAllCategories}>
-                        إظهار الكل
+            <section className="rabbit-entry fade-up">
+                <div className="rabbit-glow" />
+                <div className="rabbit-head">
+                    <div className="rabbit-title-wrap">
+                        <Rocket size={18} />
+                        <h2>Rabbit Entry</h2>
+                    </div>
+                    <p>اكتب البيانات هنا مباشرة، وRabbit ينقلها ويفهمها داخل الإدخال السريع تلقائيًا.</p>
+                </div>
+                <form className="rabbit-form" onSubmit={handleRabbitSubmit}>
+                    <input
+                        value={rabbitInput}
+                        onChange={(event) => setRabbitInput(event.target.value)}
+                        placeholder="مثال: عميل جديد محمد، الهوية 1023..., الجوال 055..., مبلغ 25000"
+                    />
+                    <button type="submit" className="btn btn-primary" disabled={!rabbitInput.trim()}>
+                        <Rocket size={15} /> إرسال إلى Rabbit
                     </button>
+                </form>
+                <div className="rabbit-presets">
+                    {rabbitPresets.map((preset) => (
+                        <button key={preset} type="button" onClick={() => setRabbitInput(preset)}>
+                            {preset}
+                        </button>
+                    ))}
+                </div>
+            </section>
+
+            <div className="quick-actions-section fade-up">
+                <div className="quick-actions-rail">
+                    {QUICK_ACTIONS.map((a) => (
+                        <button key={a.path} className="quick-action-pill" onClick={() => router.push(a.path)}>
+                            <span className="qa-icon" style={{ background: `color-mix(in srgb, ${a.color} 14%, transparent)`, color: a.color }}>
+                                <a.Icon size={18} color={a.color} />
+                            </span>
+                            <span className="qa-text">
+                                <b>{a.label}</b>
+                                <small>{a.sub}</small>
+                            </span>
+                            <BarChart3 size={14} color="var(--text-muted)" />
+                        </button>
+                    ))}
                 </div>
             </div>
 
-            <div className="stats-grid">
-                {visibleStats.length === 0 ? (
-                    <div className="stats-empty">
-                        <ClipboardList size={20} color="var(--text-muted)" />
-                        <p>اختر تصنيفاً لعرض البطاقات</p>
-                    </div>
-                ) : (
-                    visibleStats.map((card) => (
-                        <StatCard key={card.id} {...card} />
-                    ))
-                )}
+            {/* Essential Key Metrics */}
+            <div className="stats-grid fade-up" style={{ marginBottom: '32px' }}>
+                {visibleStats.map((card) => (
+                    <StatCard key={card.id} {...card} />
+                ))}
             </div>
 
             {/* Najiz Details */}
@@ -980,24 +972,7 @@ export default function DashboardPage() {
                 </div>
             )}
 
-            {/* Quick Actions */}
-            <div className="quick-actions-section fade-up">
-                <h3 className="section-title">إجراءات سريعة</h3>
-                <div className="quick-actions-grid">
-                    {QUICK_ACTIONS.map((a, i) => (
-                        <button key={i} className="quick-action-card" onClick={() => router.push(a.path)}>
-                            <div className="qa-icon" style={{ background: `color-mix(in srgb, ${a.color} 14%, transparent)`, color: a.color }}>
-                                <a.Icon size={22} color={a.color} />
-                            </div>
-                            <div className="qa-text">
-                                <div className="qa-label">{a.label}</div>
-                                <div className="qa-sub">{a.sub}</div>
-                            </div>
-                            <BarChart3 size={14} color="var(--text-muted)" style={{ transform: 'rotate(90deg)' }} />
-                        </button>
-                    ))}
-                </div>
-            </div>
+
         </>
     );
 }

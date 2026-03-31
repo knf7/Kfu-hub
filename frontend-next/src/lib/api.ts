@@ -535,6 +535,20 @@ export const reportsAPI = {
         );
         return response;
     },
+    exportYearlyWorkbookXlsx: async (year?: number) => {
+        const safeYear = Number.isFinite(Number(year)) ? Number(year) : new Date().getFullYear();
+        const response = await api.get('/reports/export-yearly-workbook', {
+            params: { year: safeYear },
+            responseType: 'blob',
+        });
+        const finalName = `loans-workbook-${safeYear}.xlsx`;
+        downloadBlobFile(
+            response.data,
+            finalName,
+            response?.headers?.['content-type']
+        );
+        return response;
+    },
 };
 
 export const assistantAPI = {

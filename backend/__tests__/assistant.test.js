@@ -144,4 +144,46 @@ describe('Assistant Quick Entry API', () => {
         expect(res.body.record.loan.id).toBe('loan-ai-1');
         expect(res.body.record.loan.amount).toBe('18000');
     });
+
+    it('should auto-create when message is complete and prediction allows it', async () => {
+        db.query
+            .mockResolvedValueOnce({ rows: [{ session_version: 1 }] }) // Auth
+            .mockResolvedValueOnce({
+                rows: [{
+                    id: 'customer-auto-1',
+                    full_name: 'محمد صالح',
+                    national_id: '1034567890',
+                    mobile_number: '0559876543'
+                }]
+            }) // findExistingCustomer by national_id
+            .mockResolvedValueOnce({
+                rows: [{
+                    id: 'loan-auto-1',
+                    customer_id: 'customer-auto-1',
+                    amount: '25000',
+                    status: 'Active',
+                    transaction_date: '2026-03-20T00:00:00.000Z'
+                }]
+            }) // create loan
+            .mockResolvedValueOnce({
+                rows: [{
+                    id: 'customer-auto-1',
+                    full_name: 'محمد صالح',
+                    national_id: '1034567890',
+                    mobile_number: '0559876543'
+                }]
+            }); // load customer
+
+        const res = await request(app)
+            .post('/api/assistant/quick-entry')
+            .set('Cookie', [`token=${token}`])
+            .send({
+                message: 'محمد صالح الهوية 1034567890 الجوال 0559876543 مبلغ 25000',
+                draft: {}
+            });
+
+        expect(res.statusCode).toBe(201);
+        expect(res.body.record?.loan?.id).toBe('loan-auto-1');
+        expect(res.body.prediction?.reason).toBe('auto-created-from-prediction');
+    });
 });

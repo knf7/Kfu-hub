@@ -1307,6 +1307,135 @@ router.get('/ai-analysis', checkPermission('can_view_analytics'), async (req, re
 });
 
 // ─────────────────────────────────────────────────────────
+// GET /api/reports/export-yearly-workbook — Export one workbook with monthly sheets
+// ─────────────────────────────────────────────────────────
+router.get('/export-yearly-workbook', checkPermission('can_view_loans'), async (req, res) => {
+    try {
+        const nowYear = new Date().getUTCFullYear();
+        const year = Number.parseInt(String(req.query?.year || nowYear), 10);
+        if (!Number.isFinite(year) || year < 2000 || year > 2100) {
+            return res.status(400).json({ error: 'year غير صالح. القيمة المتوقعة بين 2000 و 2100.' });
+        }
+
+        const startDate = `${year}-01-01T00:00:00.000Z`;
+        const endDate = `${year}-12-31T23:59:59.999Z`;
+
+        const result = await db.query(
+            `SELECT l.id, c.full_name, c.national_id, c.mobile_number,
+                    l.amount, l.receipt_number, l.status, l.transaction_date, l.created_at
+             FROM loans l
+             LEFT JOIN customers c ON l.customer_id = c.id
+             WHERE l.merchant_id = $1
+               AND l.deleted_at IS NULL
+               AND l.transaction_date >= $2
+               AND l.transaction_date <= $3
+             ORDER BY l.transaction_date ASC`,
+            [req.merchantId, startDate, endDate]
+        );
+
+        const workbook = new ExcelJS.Workbook();
+        const statusAR = {
+            Active: 'نشط',
+            Paid: 'مدفوع',
+            Cancelled: 'ملغي',
+            Raised: 'مرفوع',
+            Overdue: 'متأخر'
+        };
+        const buckets = Array.from({ length: 12 }, () => []);
+
+        result.rows.forEach((row) => {
+            const txDate = row.transaction_date ? new Date(row.transaction_date) : null;
+            if (!txDate || Number.isNaN(txDate.getTime())) return;
+            const monthIndex = txDate.getUTCMonth();
+            if (monthIndex < 0 || monthIndex > 11) return;
+            buckets[monthIndex].push(row);
+        });
+
+        const summarySheet = workbook.addWorksheet(`ملخص-${year}`);
+        summarySheet.columns = [
+            { header: 'الشهر', key: 'month', width: 16 },
+            { header: 'عدد القروض', key: 'count', width: 14 },
+            { header: 'إجمالي المبالغ (ر.س)', key: 'totalAmount', width: 22 },
+            { header: 'مبالغ مسددة (ر.س)', key: 'paidAmount', width: 21 },
+        ];
+        summarySheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+        summarySheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1A2B4A' } };
+
+        for (let monthIndex = 0; monthIndex < 12; monthIndex += 1) {
+            const rows = buckets[monthIndex];
+            const totalAmount = rows.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+            const paidAmount = rows
+                .filter((item) => String(item.status || '').toLowerCase() === 'paid')
+                .reduce((sum, item) => sum + Number(item.amount || 0), 0);
+
+            summarySheet.addRow({
+                month: AR_MONTH_NAMES[monthIndex] || `شهر ${monthIndex + 1}`,
+                count: rows.length,
+                totalAmount: Number(totalAmount.toFixed(2)),
+                paidAmount: Number(paidAmount.toFixed(2)),
+            });
+        }
+
+        for (let monthIndex = 0; monthIndex < 12; monthIndex += 1) {
+            const monthLabel = AR_MONTH_NAMES[monthIndex] || `شهر ${monthIndex + 1}`;
+            const sheet = workbook.addWorksheet(`${monthLabel}-${year}`);
+            sheet.columns = [
+                { header: 'رقم القرض', key: 'id', width: 36 },
+                { header: 'اسم العميل', key: 'full_name', width: 25 },
+                { header: 'رقم الهوية', key: 'national_id', width: 15 },
+                { header: 'رقم الجوال', key: 'mobile_number', width: 15 },
+                { header: 'المبلغ (ر.س)', key: 'amount', width: 14 },
+                { header: 'رقم السند', key: 'receipt_number', width: 15 },
+                { header: 'الحالة', key: 'status', width: 12 },
+                { header: 'تاريخ المعاملة', key: 'transaction_date', width: 16 },
+            ];
+
+            sheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+            sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } };
+
+            const rows = buckets[monthIndex];
+            if (rows.length === 0) {
+                sheet.addRow({
+                    full_name: 'لا توجد سجلات لهذا الشهر',
+                });
+                continue;
+            }
+
+            rows.forEach((row) => {
+                sheet.addRow({
+                    id: row.id,
+                    full_name: row.full_name || '-',
+                    national_id: row.national_id || '-',
+                    mobile_number: row.mobile_number || '-',
+                    amount: Number(row.amount || 0),
+                    receipt_number: row.receipt_number || '-',
+                    status: statusAR[row.status] || row.status,
+                    transaction_date: row.transaction_date
+                        ? new Date(row.transaction_date).toLocaleDateString('ar-SA')
+                        : '-'
+                });
+            });
+
+            const monthTotal = rows.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+            const totalRow = sheet.addRow({
+                full_name: `الإجمالي (${monthLabel})`,
+                amount: Number(monthTotal.toFixed(2)),
+            });
+            totalRow.font = { bold: true };
+            totalRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
+        }
+
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename=loans-workbook-${year}.xlsx`);
+        await workbook.xlsx.write(res);
+        res.end();
+    } catch (err) {
+        console.error('Yearly workbook export error:', err);
+        res.status(500).json({ error: 'Failed to export yearly workbook' });
+    }
+});
+
+// ─────────────────────────────────────────────────────────
 // GET /api/reports/export — Export loans to XLSX
 // ─────────────────────────────────────────────────────────
 router.get('/export', checkPermission('can_view_loans'), async (req, res) => {

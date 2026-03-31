@@ -1,6 +1,7 @@
 'use client';
 
 import React, { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { assistantAPI } from '@/lib/api';
 import {
@@ -50,6 +51,12 @@ type AssistantPayload = {
   draft?: QuickEntryDraft;
   missingFields?: string[];
   canCreate?: boolean;
+  prediction?: {
+    intent?: 'create' | 'collect_more' | string;
+    confidence?: number;
+    reason?: string;
+    autoConfirmEligible?: boolean;
+  };
   record?: AssistantRecord | null;
   customerMatch?: {
     id: string;
@@ -75,6 +82,13 @@ type AiExtracted = {
   receiptNumber?: string | null;
   transactionDate?: string | null;
   intent?: string | null;
+};
+
+type PuterIntelligence = {
+  extracted: AiExtracted | null;
+  assistantReply: string | null;
+  followUpQuestion: string | null;
+  quickReplies: string[];
 };
 
 declare global {
@@ -110,6 +124,26 @@ const MISSING_FIELD_LABELS: Record<string, string> = {
   mobileNumber: 'رقم الجوال',
   amount: 'مبلغ القرض',
 };
+
+const MISSING_FIELD_SUGGESTIONS: Record<string, string> = {
+  fullName: 'اسم العميل: ________',
+  nationalId: 'رقم الهوية: 10 أرقام',
+  mobileNumber: 'رقم الجوال: 05XXXXXXXX',
+  amount: 'مبلغ القرض: ______ ر.س',
+};
+
+const DEFAULT_SUGGESTIONS = [
+  'عميل جديد: الاسم + الهوية + الجوال + المبلغ',
+  'عميل سابق: الهوية + مبلغ القرض',
+  'أكمل البيانات الناقصة تلقائياً',
+];
+
+const normalizeSuggestionList = (items: string[]) =>
+  Array.from(new Set(items.map((item) => String(item || '').trim()).filter(Boolean))).slice(0, 5);
+
+const getSuggestionsFromMissing = (fields: string[]) => normalizeSuggestionList(
+  fields.map((field) => MISSING_FIELD_SUGGESTIONS[field]).filter(Boolean)
+);
 
 const formatCurrency = (value: number | null | undefined) => {
   if (!Number.isFinite(Number(value))) return '—';
@@ -169,6 +203,8 @@ function BrandSignature() {
 }
 
 export default function QuickEntryPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: createId(),
@@ -184,8 +220,12 @@ export default function QuickEntryPage() {
   const [loading, setLoading] = useState(false);
   const [customerMatch, setCustomerMatch] = useState<AssistantPayload['customerMatch']>(null);
   const [lastRecord, setLastRecord] = useState<AssistantRecord | null>(null);
+  const [prediction, setPrediction] = useState<AssistantPayload['prediction'] | null>(null);
   const [aiProviderState, setAiProviderState] = useState<'loading' | 'ready' | 'fallback'>('loading');
+  const [quickSuggestions, setQuickSuggestions] = useState<string[]>(DEFAULT_SUGGESTIONS);
   const endRef = useRef<HTMLDivElement | null>(null);
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
+  const hasPrefillRunRef = useRef(false);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
@@ -235,11 +275,22 @@ export default function QuickEntryPage() {
     setMessages((prev) => [...prev, { id: createId(), role, text, tone }]);
   };
 
-  const applyPayload = (payload: AssistantPayload) => {
+  const refreshSuggestions = (fields: string[], aiReplies: string[] = []) => {
+    const next = normalizeSuggestionList([
+      ...getSuggestionsFromMissing(fields),
+      ...aiReplies,
+    ]);
+    setQuickSuggestions(next.length ? next : DEFAULT_SUGGESTIONS);
+  };
+
+  const applyPayload = (payload: AssistantPayload, aiReplies: string[] = []) => {
+    const nextMissingFields = payload.missingFields || [];
     setDraft(payload.draft || EMPTY_DRAFT);
-    setMissingFields(payload.missingFields || []);
+    setMissingFields(nextMissingFields);
     setCanCreate(Boolean(payload.canCreate));
     setCustomerMatch(payload.customerMatch || null);
+    setPrediction(payload.prediction || null);
+    refreshSuggestions(nextMissingFields, aiReplies);
     if (payload.record) {
       setLastRecord(payload.record);
     }
@@ -248,7 +299,7 @@ export default function QuickEntryPage() {
     }
   };
 
-  const extractWithPuter = async (text: string): Promise<AiExtracted | null> => {
+  const analyzeWithPuter = async (text: string): Promise<PuterIntelligence | null> => {
     if (typeof window === 'undefined' || !window.puter?.ai?.chat) return null;
 
     const draftSnapshot = {
@@ -264,15 +315,22 @@ export default function QuickEntryPage() {
         transactionDate: draft.loan.transactionDate,
       },
     };
+    const recentConversation = messages
+      .slice(-6)
+      .map((msg) => `${msg.role === 'assistant' ? 'ASSISTANT' : 'USER'}: ${msg.text}`)
+      .join('\n');
 
     const prompt = [
-      'أنت مساعد استخراج بيانات قروض باللغة العربية.',
-      'استخرج البيانات الموجودة فقط من الرسالة التالية.',
-      'إذا كانت القيمة غير موجودة أعدها null.',
-      'أعد JSON فقط بدون أي شرح أو markdown بالمفاتيح التالية حرفياً:',
-      '{"fullName":null,"nationalId":null,"mobileNumber":null,"amount":null,"profitPercentage":null,"receiptNumber":null,"transactionDate":null,"intent":null}',
+      'أنت مساعد ذكي للإدخال السريع للقروض في السعودية.',
+      'المطلوب: استخراج الحقول، اقتراح سؤال متابعة ذكي، وتوليد اقتراحات رد جاهزة للمستخدم.',
+      'أعد JSON فقط بدون markdown بالشكل التالي:',
+      '{"extracted":{"fullName":null,"nationalId":null,"mobileNumber":null,"amount":null,"profitPercentage":null,"receiptNumber":null,"transactionDate":null,"intent":null},"assistantReply":null,"followUpQuestion":null,"quickReplies":[]}',
       'intent يجب أن تكون واحدة من: confirm أو collect_more أو create.',
+      'followUpQuestion يجب أن تكون جملة عربية قصيرة تجمع أهم البيانات الناقصة.',
+      'quickReplies مصفوفة قصيرة (2-4 عناصر) تساعد المستخدم على الرد بسرعة.',
       `Draft الحالي: ${JSON.stringify(draftSnapshot)}`,
+      `الحقول الناقصة الحالية: ${JSON.stringify(missingFields)}`,
+      `سياق المحادثة (آخر الرسائل): ${recentConversation || 'لا يوجد سياق بعد'}`,
       `الرسالة: ${text}`,
     ].join('\n');
 
@@ -280,15 +338,28 @@ export default function QuickEntryPage() {
       const raw = await window.puter.ai.chat(prompt, { model: PUTER_MODEL });
       const parsed = extractJsonObject(normalizePuterResponseText(raw));
       if (!parsed || typeof parsed !== 'object') return null;
+
+      const source = (parsed.extracted && typeof parsed.extracted === 'object') ? parsed.extracted : parsed;
+      const quickReplies = normalizeSuggestionList(
+        Array.isArray(parsed.quickReplies)
+          ? parsed.quickReplies.map((item: unknown) => String(item ?? ''))
+          : []
+      );
+
       return {
-        fullName: parsed.fullName ?? null,
-        nationalId: parsed.nationalId ?? null,
-        mobileNumber: parsed.mobileNumber ?? null,
-        amount: parsed.amount ?? null,
-        profitPercentage: parsed.profitPercentage ?? null,
-        receiptNumber: parsed.receiptNumber ?? null,
-        transactionDate: parsed.transactionDate ?? null,
-        intent: parsed.intent ?? null,
+        extracted: {
+          fullName: source.fullName ?? null,
+          nationalId: source.nationalId ?? null,
+          mobileNumber: source.mobileNumber ?? null,
+          amount: source.amount ?? null,
+          profitPercentage: source.profitPercentage ?? null,
+          receiptNumber: source.receiptNumber ?? null,
+          transactionDate: source.transactionDate ?? null,
+          intent: source.intent ?? parsed.intent ?? null,
+        },
+        assistantReply: typeof parsed.assistantReply === 'string' ? parsed.assistantReply.trim() : null,
+        followUpQuestion: typeof parsed.followUpQuestion === 'string' ? parsed.followUpQuestion.trim() : null,
+        quickReplies,
       };
     } catch {
       return null;
@@ -302,9 +373,11 @@ export default function QuickEntryPage() {
     pushMessage('user', clean);
     setInput('');
     setLoading(true);
+    let aiIntelligence: PuterIntelligence | null = null;
 
     try {
-      const aiExtracted = aiProviderState === 'ready' ? await extractWithPuter(clean) : null;
+      aiIntelligence = aiProviderState === 'ready' ? await analyzeWithPuter(clean) : null;
+      const aiExtracted = aiIntelligence?.extracted || null;
       const aiIntent = String(aiExtracted?.intent || '').toLowerCase();
       const confirmByAI = aiIntent === 'confirm' || aiIntent === 'create';
 
@@ -315,15 +388,34 @@ export default function QuickEntryPage() {
         aiExtracted,
       });
       const payload: AssistantPayload = response?.data || {};
-      applyPayload(payload);
+      applyPayload(payload, aiIntelligence?.quickReplies || []);
+
+      const backendAssistant = String(payload.assistant || '').trim();
+      if (!backendAssistant && aiIntelligence?.assistantReply) {
+        pushMessage('assistant', aiIntelligence.assistantReply);
+      }
+      if ((payload.missingFields?.length || 0) > 0 && aiIntelligence?.followUpQuestion) {
+        if (!backendAssistant.includes(aiIntelligence.followUpQuestion)) {
+          pushMessage('assistant', aiIntelligence.followUpQuestion);
+        }
+      }
 
       if (payload.record?.loan?.id) {
-        toast.success('تم إنشاء السجل بنجاح.');
+        toast.success('تم إنشاء السجل بنجاح وجرى مزامنته مع صفحة القروض.');
+        router.prefetch('/dashboard/loans');
+        setQuickSuggestions(DEFAULT_SUGGESTIONS);
       }
     } catch (error: any) {
       const backendMessage = error?.response?.data?.assistant || error?.response?.data?.error;
-      pushMessage('assistant', backendMessage || 'تعذر إكمال العملية الآن. حاول مرة أخرى.');
+      const fallbackMessage = backendMessage || aiIntelligence?.assistantReply || 'تعذر إكمال العملية الآن. حاول مرة أخرى.';
+      pushMessage('assistant', fallbackMessage);
       toast.error(backendMessage || 'تعذر تنفيذ الإدخال السريع.');
+      if (aiIntelligence?.quickReplies?.length) {
+        setQuickSuggestions(normalizeSuggestionList([
+          ...aiIntelligence.quickReplies,
+          ...getSuggestionsFromMissing(missingFields),
+        ]));
+      }
     } finally {
       setLoading(false);
     }
@@ -334,8 +426,25 @@ export default function QuickEntryPage() {
     sendToAssistant(input, false);
   };
 
+  useEffect(() => {
+    if (hasPrefillRunRef.current) return;
+    const prefill = String(searchParams.get('q') || '').trim();
+    if (!prefill) return;
+    hasPrefillRunRef.current = true;
+    setInput(prefill);
+    sendToAssistant(prefill, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
   const handleConfirmCreate = () => {
     sendToAssistant('تأكيد', true);
+  };
+
+  const handleSuggestionClick = (suggestion: string) => {
+    setInput(suggestion);
+    composerRef.current?.focus();
+    const end = suggestion.length;
+    composerRef.current?.setSelectionRange(end, end);
   };
 
   const handleReset = () => {
@@ -345,6 +454,8 @@ export default function QuickEntryPage() {
     setCanCreate(false);
     setCustomerMatch(null);
     setLastRecord(null);
+    setPrediction(null);
+    setQuickSuggestions(DEFAULT_SUGGESTIONS);
     setMessages([
       {
         id: createId(),
@@ -361,13 +472,13 @@ export default function QuickEntryPage() {
           <div className="qe-brand">
             <BrandSignature />
             <div>
-              <h1>الإدخال السريع الذكي</h1>
-              <p>سجل قرض جديد لعميل جديد أو سابق عبر محادثة واحدة.</p>
+              <h1>Rabbit Entry • الإدخال السريع الذكي</h1>
+              <p>محادثة ذكية تتنبأ بالنية وتكمل الحقول تلقائيًا لإنشاء سجل العميل والقرض بسرعة.</p>
             </div>
           </div>
           <div className="qe-header-actions">
             <div className={`qe-ai-badge ${aiProviderState}`}>
-              {aiProviderState === 'ready' && 'Puter AI متصل'}
+              {aiProviderState === 'ready' && 'Rabbit AI (Puter) جاهز'}
               {aiProviderState === 'loading' && 'جاري تهيئة Puter AI...'}
               {aiProviderState === 'fallback' && 'وضع احتياطي (بدون AI)'}
             </div>
@@ -383,6 +494,12 @@ export default function QuickEntryPage() {
         </header>
 
         <div className="qe-missing-strip">
+          {prediction?.intent && (
+            <span className={`qe-chip rabbit ${prediction.intent === 'create' ? 'create' : ''}`}>
+              Rabbit توقع: {prediction.intent === 'create' ? 'إنشاء سجل' : 'استكمال بيانات'}
+              {typeof prediction.confidence === 'number' && ` (${Math.round(prediction.confidence * 100)}%)`}
+            </span>
+          )}
           {missingFields.length > 0 ? (
             missingFields.map((field) => (
               <span key={field} className="qe-chip">{MISSING_FIELD_LABELS[field] || field}</span>
@@ -412,7 +529,22 @@ export default function QuickEntryPage() {
 
         <footer className="qe-composer">
           <form onSubmit={handleSubmit}>
+            {quickSuggestions.length > 0 && (
+              <div className="qe-suggestion-strip" aria-label="اقتراحات ذكية سريعة">
+                {quickSuggestions.map((suggestion) => (
+                  <button
+                    key={suggestion}
+                    type="button"
+                    className="qe-suggestion-chip"
+                    onClick={() => handleSuggestionClick(suggestion)}
+                  >
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
+            )}
             <textarea
+              ref={composerRef}
               value={input}
               onChange={(event) => setInput(event.target.value)}
               placeholder="مثال: العميل محمد أحمد، الهوية 1023456789، الجوال 0551234567، مبلغ 25000، نسبة الربح 12%"
@@ -482,6 +614,13 @@ export default function QuickEntryPage() {
               <p>رقم القرض: <strong>{lastRecord.loan.id.slice(0, 8)}...</strong></p>
               <p>المبلغ: <strong>{formatCurrency(lastRecord.loan.amount)}</strong></p>
               <p>الحالة: <strong>{lastRecord.loan.status || 'Active'}</strong></p>
+              <button
+                type="button"
+                className="qe-link-btn"
+                onClick={() => router.push('/dashboard/loans')}
+              >
+                فتح صفحة القروض
+              </button>
             </div>
           ) : (
             <p className="qe-note">لا توجد عملية مكتملة في هذه الجلسة بعد.</p>

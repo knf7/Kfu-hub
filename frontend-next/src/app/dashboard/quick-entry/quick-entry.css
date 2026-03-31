@@ -47,6 +47,15 @@
   backdrop-filter: blur(14px);
   box-shadow: 0 20px 60px rgba(37, 99, 235, 0.12);
   overflow: hidden;
+  position: relative;
+}
+
+.qe-chat-surface::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(110% 80% at 100% 0%, rgba(56, 189, 248, 0.08), transparent 64%);
+  pointer-events: none;
 }
 
 .qe-header {
@@ -82,6 +91,7 @@
   width: 56px;
   height: 56px;
   flex-shrink: 0;
+  animation: qe-logo-float 2.8s ease-in-out infinite;
 }
 
 .qe-header-actions {
@@ -189,6 +199,18 @@
   background: rgba(16, 185, 129, 0.12);
 }
 
+.qe-chip.rabbit {
+  color: #0c4a6e;
+  border-color: rgba(14, 165, 233, 0.45);
+  background: rgba(125, 211, 252, 0.28);
+}
+
+.qe-chip.rabbit.create {
+  color: #065f46;
+  border-color: rgba(16, 185, 129, 0.45);
+  background: rgba(110, 231, 183, 0.2);
+}
+
 [data-theme="dark"] .qe-chip {
   color: #bfdbfe;
 }
@@ -272,6 +294,37 @@
   padding: 12px 16px 16px;
   border-top: 1px solid rgba(148, 163, 184, 0.24);
   background: color-mix(in srgb, var(--qe-panel) 80%, transparent);
+}
+
+.qe-suggestion-strip {
+  margin-bottom: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.qe-suggestion-chip {
+  min-height: 34px;
+  border-radius: 999px;
+  padding: 0 11px;
+  font-size: 0.77rem;
+  font-weight: 700;
+  color: #075985;
+  background: rgba(186, 230, 253, 0.58);
+  border: 1px solid rgba(56, 189, 248, 0.32);
+  transition: all 0.2s ease;
+}
+
+.qe-suggestion-chip:hover {
+  transform: translateY(-1px);
+  color: #0c4a6e;
+  border-color: rgba(14, 116, 144, 0.45);
+}
+
+[data-theme="dark"] .qe-suggestion-chip {
+  color: #dbeafe;
+  background: rgba(30, 64, 175, 0.36);
+  border-color: rgba(96, 165, 250, 0.36);
 }
 
 .qe-composer textarea {
@@ -401,6 +454,20 @@
   font-size: 0.9rem;
 }
 
+.qe-link-btn {
+  margin-top: 8px;
+  min-height: 36px;
+  border-radius: 10px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.82rem;
+  color: #e0f2fe;
+  background: linear-gradient(135deg, #0284c7, #1d4ed8);
+}
+
 @keyframes qe-fade-up {
   from {
     opacity: 0;
@@ -420,6 +487,15 @@
   50% {
     opacity: 1;
     transform: scale(1);
+  }
+}
+
+@keyframes qe-logo-float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-2px);
   }
 }
 

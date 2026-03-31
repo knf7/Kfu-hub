@@ -251,6 +251,57 @@ const MISSING_FIELD_PROMPTS = {
     amount: 'كم مبلغ القرض؟',
 };
 
+const predictIntent = ({
+    message,
+    aiIntent,
+    canCreate,
+    missingFields,
+    customerMatch,
+}) => {
+    const normalizedMessage = normalizeSpaces(toEnglishDigits(message || '')).toLowerCase();
+    const explicitCreate = /(تأكيد|أكيد|انشئ|أنشئ|انشاء|إنشاء|سجل|اضف|أضف|نفذ|اعتمد|create|confirm|submit|done|yes|ok)\b/i.test(normalizedMessage);
+    const explicitCollectMore = /(ناقص|اكمل|كمل|عدّل|تعديل|collect|update|edit|more|next|حقل)/i.test(normalizedMessage);
+
+    let intent = 'collect_more';
+    let confidence = 0.58;
+    let reason = 'awaiting-more-data';
+
+    if (aiIntent === 'confirm' || aiIntent === 'create') {
+        intent = 'create';
+        confidence = canCreate ? 0.94 : 0.66;
+        reason = 'ai-intent-create';
+    } else if (aiIntent === 'collect_more') {
+        intent = 'collect_more';
+        confidence = 0.88;
+        reason = 'ai-intent-collect';
+    } else if (explicitCreate) {
+        intent = 'create';
+        confidence = canCreate ? 0.9 : 0.64;
+        reason = 'explicit-create-keyword';
+    } else if (explicitCollectMore) {
+        intent = 'collect_more';
+        confidence = 0.84;
+        reason = 'explicit-collect-keyword';
+    } else if (canCreate) {
+        intent = 'create';
+        confidence = 0.85;
+        reason = 'all-required-fields-present';
+    } else if (customerMatch && missingFields.length === 1 && missingFields[0] === 'amount') {
+        intent = 'collect_more';
+        confidence = 0.9;
+        reason = 'existing-customer-needs-amount';
+    }
+
+    const autoConfirmEligible = canCreate && intent === 'create' && confidence >= 0.85;
+
+    return {
+        intent,
+        confidence: Number(confidence.toFixed(2)),
+        reason,
+        autoConfirmEligible,
+    };
+};
+
 const buildAssistantMessage = ({ customerMatch, missingFields, canCreate, justCreated }) => {
     if (justCreated) {
         return 'تم إنشاء السجل بنجاح. أنشأت العميل/القرض ويمكنك متابعة التعديل أو إضافة سجل جديد.';
@@ -362,7 +413,8 @@ router.post('/quick-entry', checkPermission('can_add_loans'), async (req, res) =
         const confirmByMessage = /^(تأكيد|أكيد|انشئ|أنشئ|create|confirm|yes|ok)$/i.test(message);
         const previousDraft = (req.body?.draft && typeof req.body.draft === 'object') ? req.body.draft : {};
         const aiExtracted = normalizeAiExtracted(req.body?.aiExtracted);
-        const confirmByIntent = aiExtracted.intent === 'confirm' || aiExtracted.intent === 'create';
+        const aiIntent = String(aiExtracted.intent || '').trim().toLowerCase();
+        const confirmByIntent = aiIntent === 'confirm' || aiIntent === 'create';
         const confirm = Boolean(req.body?.confirm) || confirmByMessage || confirmByIntent;
 
         const extracted = {
@@ -389,8 +441,16 @@ router.post('/quick-entry', checkPermission('can_add_loans'), async (req, res) =
 
         const missingFields = getMissingFields(draft);
         const canCreate = missingFields.length === 0;
+        const prediction = predictIntent({
+            message,
+            aiIntent,
+            canCreate,
+            missingFields,
+            customerMatch,
+        });
+        const autoCreate = !confirm && prediction.autoConfirmEligible;
 
-        if (confirm) {
+        if (confirm || autoCreate) {
             if (!canCreate) {
                 return res.status(400).json({
                     assistant: buildAssistantMessage({ customerMatch, missingFields, canCreate: false, justCreated: false }),
@@ -398,6 +458,7 @@ router.post('/quick-entry', checkPermission('can_add_loans'), async (req, res) =
                     missingFields,
                     canCreate: false,
                     needsConfirmation: false,
+                    prediction: { ...prediction, autoConfirmEligible: false },
                     record: null,
                 });
             }
@@ -409,7 +470,9 @@ router.post('/quick-entry', checkPermission('can_add_loans'), async (req, res) =
                 invalidateReportsCache(req.merchantId);
             }
             return res.status(201).json({
-                assistant: buildAssistantMessage({ customerMatch, missingFields: [], canCreate: true, justCreated: true }),
+                assistant: autoCreate
+                    ? 'فهمت المدخلات كاملة وتم إنشاء السجل تلقائياً عبر Rabbit AI.'
+                    : buildAssistantMessage({ customerMatch, missingFields: [], canCreate: true, justCreated: true }),
                 draft: {
                     customer: { id: null, fullName: null, nationalId: null, mobileNumber: null, source: 'new' },
                     loan: { amount: null, profitPercentage: 0, receiptNumber: null, transactionDate: null, notes: null },
@@ -417,6 +480,12 @@ router.post('/quick-entry', checkPermission('can_add_loans'), async (req, res) =
                 missingFields: [],
                 canCreate: false,
                 needsConfirmation: false,
+                prediction: {
+                    intent: 'create',
+                    confidence: autoCreate ? 0.96 : prediction.confidence,
+                    reason: autoCreate ? 'auto-created-from-prediction' : prediction.reason,
+                    autoConfirmEligible: false,
+                },
                 record,
             });
         }
@@ -427,6 +496,7 @@ router.post('/quick-entry', checkPermission('can_add_loans'), async (req, res) =
             missingFields,
             canCreate,
             needsConfirmation: canCreate,
+            prediction,
             record: null,
             customerMatch: customerMatch ? {
                 id: customerMatch.id,

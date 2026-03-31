@@ -173,6 +173,27 @@
     transform: scale(0.95);
 }
 
+.btn-quick-mini {
+    min-height: 38px;
+    padding: 0.5rem 0.9rem;
+    border-radius: 999px;
+    font-size: 0.82rem;
+    color: #075985;
+    background: rgba(186, 230, 253, 0.62);
+    border: 1px solid rgba(56, 189, 248, 0.34);
+}
+
+.btn-quick-mini:hover {
+    background: rgba(125, 211, 252, 0.7);
+    border-color: rgba(14, 116, 144, 0.5);
+}
+
+[data-theme="dark"] .btn-quick-mini {
+    color: #e0f2fe;
+    background: rgba(14, 116, 144, 0.28);
+    border-color: rgba(56, 189, 248, 0.4);
+}
+
 /* Skeleton value placeholder */
 .sk-val {
     display: inline-block;
@@ -692,6 +713,15 @@
     }
 
     .db-actions .btn {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .rabbit-form {
+        grid-template-columns: 1fr;
+    }
+
+    .rabbit-form .btn {
         width: 100%;
         justify-content: center;
     }
@@ -1237,40 +1267,151 @@
 }
 
 /* ── Quick Actions ───────────────────────────── */
+.rabbit-entry {
+    position: relative;
+    overflow: hidden;
+    border-radius: 20px;
+    padding: clamp(14px, 2vw, 20px);
+    margin-bottom: 18px;
+    border: 1px solid rgba(14, 165, 233, 0.26);
+    background:
+        linear-gradient(115deg, rgba(14, 165, 233, 0.12), rgba(59, 130, 246, 0.08)),
+        var(--glass-bg);
+    backdrop-filter: var(--glass-blur);
+}
+
+.rabbit-glow {
+    position: absolute;
+    top: 0;
+    right: -30%;
+    width: 55%;
+    height: 100%;
+    background: linear-gradient(90deg, rgba(125, 211, 252, 0), rgba(125, 211, 252, 0.42), rgba(125, 211, 252, 0));
+    transform: skewX(-18deg);
+    animation: rabbit-beam 4.6s linear infinite;
+    pointer-events: none;
+}
+
+@keyframes rabbit-beam {
+    0% {
+        transform: translateX(0) skewX(-18deg);
+        opacity: 0;
+    }
+    15% {
+        opacity: 1;
+    }
+    65% {
+        opacity: 1;
+    }
+    100% {
+        transform: translateX(-230%) skewX(-18deg);
+        opacity: 0;
+    }
+}
+
+.rabbit-head {
+    position: relative;
+    z-index: 1;
+}
+
+.rabbit-title-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-primary);
+}
+
+.rabbit-title-wrap h2 {
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 900;
+}
+
+.rabbit-head p {
+    margin: 6px 0 0;
+    color: var(--text-muted);
+    font-size: 0.86rem;
+}
+
+.rabbit-form {
+    position: relative;
+    z-index: 1;
+    margin-top: 12px;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 9px;
+}
+
+.rabbit-form input {
+    min-height: 44px;
+    border-radius: 12px;
+    border: 1px solid rgba(14, 165, 233, 0.25);
+    background: rgba(255, 255, 255, 0.72);
+    color: var(--text-primary);
+    padding: 0 14px;
+}
+
+[data-theme="dark"] .rabbit-form input {
+    background: rgba(15, 23, 42, 0.62);
+}
+
+.rabbit-presets {
+    position: relative;
+    z-index: 1;
+    margin-top: 10px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+}
+
+.rabbit-presets button {
+    min-height: 30px;
+    padding: 0 10px;
+    border-radius: 999px;
+    font-size: 0.73rem;
+    color: #075985;
+    border: 1px solid rgba(56, 189, 248, 0.36);
+    background: rgba(186, 230, 253, 0.6);
+}
+
+[data-theme="dark"] .rabbit-presets button {
+    color: #dbeafe;
+    background: rgba(30, 64, 175, 0.36);
+    border-color: rgba(96, 165, 250, 0.36);
+}
+
 .quick-actions-section {
     margin-bottom: 24px;
 }
 
-.quick-actions-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-    gap: 14px;
-    margin-top: 16px;
+.quick-actions-rail {
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
 }
 
-.quick-action-card {
+.quick-action-pill {
     display: flex;
     align-items: center;
-    gap: 14px;
-    padding: 16px 18px;
+    gap: 12px;
+    padding: 12px 14px;
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
-    border-radius: 14px;
+    border-radius: 12px;
     cursor: pointer;
     transition: all .2s;
     text-align: right;
 }
 
-.quick-action-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(0, 0, 0, .1);
-    border-color: var(--accent);
+.quick-action-pill:hover {
+    transform: translateX(-3px);
+    border-color: rgba(96, 165, 250, 0.5);
 }
 
 .qa-icon {
-    width: 44px;
-    height: 44px;
-    border-radius: 12px;
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1280,18 +1421,19 @@
 .qa-text {
     flex: 1;
     min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
 }
 
-.qa-label {
-    font-size: 14px;
-    font-weight: 700;
+.qa-text b {
+    font-size: 0.88rem;
     color: var(--text-primary);
 }
 
-.qa-sub {
-    font-size: 11px;
+.qa-text small {
+    font-size: 0.75rem;
     color: var(--text-muted);
-    margin-top: 2px;
 }
 
 /* ── Toast System ────────────────────────────── */

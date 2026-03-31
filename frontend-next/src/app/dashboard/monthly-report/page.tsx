@@ -108,7 +108,7 @@ export default function MonthlyReportPage() {
   const [year, setYear] = useState(initial.year);
   const [month, setMonth] = useState(initial.month);
   const [loading, setLoading] = useState(true);
-  const [exporting, setExporting] = useState<'xlsx' | 'csv' | 'json' | null>(null);
+  const [exporting, setExporting] = useState<'xlsx' | 'csv' | 'json' | 'yearly' | null>(null);
   const [report, setReport] = useState<MonthlyReportPayload | null>(null);
 
   const years = useMemo(() => {
@@ -278,6 +278,18 @@ export default function MonthlyReportPage() {
     }
   };
 
+  const handleExportYearlyWorkbook = async () => {
+    setExporting('yearly');
+    try {
+      await reportsAPI.exportYearlyWorkbookXlsx(year);
+      toast.success('تم تنزيل ملف Excel السنوي (Sheets شهرية) بنجاح.');
+    } catch {
+      toast.error('تعذر تصدير ملف Excel السنوي حالياً.');
+    } finally {
+      setExporting(null);
+    }
+  };
+
   return (
     <div className="mr-page">
       <header className="mr-hero">
@@ -324,6 +336,10 @@ export default function MonthlyReportPage() {
             <button type="button" className="mr-export-btn" onClick={handleExportJson} disabled={loading || exporting !== null}>
               <IconDownload size={14} />
               <span>{exporting === 'json' ? 'جاري التصدير...' : 'JSON'}</span>
+            </button>
+            <button type="button" className="mr-export-btn yearly" onClick={handleExportYearlyWorkbook} disabled={loading || exporting !== null}>
+              <IconDownload size={14} />
+              <span>{exporting === 'yearly' ? 'جاري التصدير...' : `Workbook ${year}`}</span>
             </button>
           </div>
         </div>

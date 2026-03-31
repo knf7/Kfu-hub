@@ -130,6 +130,15 @@
   cursor: not-allowed;
 }
 
+.mr-export-btn.yearly {
+  border-color: rgba(14, 165, 233, 0.45);
+  background: rgba(186, 230, 253, 0.45);
+}
+
+[data-theme="dark"] .mr-export-btn.yearly {
+  background: rgba(14, 116, 144, 0.32);
+}
+
 .mr-kpis {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
