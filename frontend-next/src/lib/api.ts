@@ -496,11 +496,45 @@ export const employeesAPI = {
     },
 };
 
+const downloadBlobFile = (data: BlobPart, fileName: string, contentType?: string) => {
+    if (typeof window === 'undefined') return;
+    const blob = new Blob([data], {
+        type: contentType || 'application/octet-stream',
+    });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', fileName);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+};
+
 export const reportsAPI = {
     getDashboard: (params: any) => cachedGet('/reports/dashboard', { params }),
     getAnalytics: (params: any) => cachedGet('/reports/analytics', { params }),
     getMonthlySummary: (params: any) => cachedGet('/reports/monthly-summary', { params }),
     getAIAnalysis: (params: any) => cachedGet('/reports/ai-analysis', { params }),
+    exportMonthlyLoansXlsx: async (params: {
+        startDate: string;
+        endDate: string;
+        status?: string;
+        fileName?: string;
+    }) => {
+        const { fileName, ...query } = params;
+        const response = await api.get('/reports/export', {
+            params: query,
+            responseType: 'blob',
+        });
+        const finalName = fileName || `monthly-report-${new Date().toISOString().slice(0, 10)}.xlsx`;
+        downloadBlobFile(
+            response.data,
+            finalName,
+            response?.headers?.['content-type']
+        );
+        return response;
+    },
 };
 
 export const assistantAPI = {

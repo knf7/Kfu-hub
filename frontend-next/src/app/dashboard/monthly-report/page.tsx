@@ -8,6 +8,7 @@ import {
   IconAlertTriangle,
   IconCheck,
   IconClipboard,
+  IconDownload,
   IconMoney,
   IconRefresh,
   IconTrend,
@@ -107,6 +108,7 @@ export default function MonthlyReportPage() {
   const [year, setYear] = useState(initial.year);
   const [month, setMonth] = useState(initial.month);
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState<'xlsx' | 'csv' | 'json' | null>(null);
   const [report, setReport] = useState<MonthlyReportPayload | null>(null);
 
   const years = useMemo(() => {
@@ -142,6 +144,140 @@ export default function MonthlyReportPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [year, month]);
 
+  const fileStamp = `${year}-${String(month).padStart(2, '0')}`;
+
+  const getExportWindow = () => {
+    const start = report?.period?.startDate
+      ? new Date(`${report.period.startDate}T00:00:00.000Z`)
+      : new Date(Date.UTC(year, month - 1, 1, 0, 0, 0));
+    const end = report?.period?.endDate
+      ? new Date(`${report.period.endDate}T23:59:59.999Z`)
+      : new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
+
+    return {
+      startDate: start.toISOString(),
+      endDate: end.toISOString(),
+    };
+  };
+
+  const downloadTextFile = (content: string, fileName: string, mimeType: string, withBom = false) => {
+    const data = withBom ? `\uFEFF${content}` : content;
+    const blob = new Blob([data], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const toCsvCell = (value: unknown) => {
+    const raw = String(value ?? '');
+    const escaped = raw.replace(/"/g, '""');
+    return /[",\n]/.test(escaped) ? `"${escaped}"` : escaped;
+  };
+
+  const handleExportXlsx = async () => {
+    setExporting('xlsx');
+    try {
+      const { startDate, endDate } = getExportWindow();
+      await reportsAPI.exportMonthlyLoansXlsx({
+        startDate,
+        endDate,
+        fileName: `monthly-report-${fileStamp}.xlsx`,
+      });
+      toast.success('تم تنزيل ملف Excel بنجاح.');
+    } catch {
+      toast.error('تعذر تصدير ملف Excel حالياً.');
+    } finally {
+      setExporting(null);
+    }
+  };
+
+  const handleExportCsv = () => {
+    if (!report) {
+      toast.error('لا توجد بيانات للتصدير.');
+      return;
+    }
+    setExporting('csv');
+    try {
+      const rows: Array<Array<string | number>> = [];
+      rows.push(['التقرير الشهري الذكي', report?.period?.monthName || '', fileStamp]);
+      rows.push(['فترة التقرير', report?.period?.startDate || '', report?.period?.endDate || '']);
+      rows.push([]);
+
+      rows.push(['الملخص']);
+      rows.push(['إجمالي القروض', Number(report?.summary?.totalLoans || 0)]);
+      rows.push(['إجمالي الصرف', Number(report?.summary?.totalDisbursed || 0)]);
+      rows.push(['إجمالي التحصيل', Number(report?.summary?.totalCollected || 0)]);
+      rows.push(['عملاء الشهر', Number(report?.summary?.uniqueCustomers || 0)]);
+      rows.push(['نسبة التحصيل', `${Number(report?.summary?.collectionRate || 0)}%`]);
+      rows.push([]);
+
+      rows.push(['توزيع الحالات']);
+      rows.push(['الحالة', 'العدد', 'المبلغ']);
+      (report?.statusBreakdown || []).forEach((item) => {
+        rows.push([
+          STATUS_LABELS[item.status] || item.status,
+          Number(item.count || 0),
+          Number(item.amount || 0),
+        ]);
+      });
+      rows.push([]);
+
+      rows.push(['أفضل العملاء']);
+      rows.push(['الاسم', 'الجوال', 'عدد القروض', 'إجمالي المبلغ', 'المحصل']);
+      (report?.topCustomers || []).forEach((item) => {
+        rows.push([
+          item.fullName || '-',
+          item.mobileNumber || '-',
+          Number(item.loansCount || 0),
+          Number(item.totalAmount || 0),
+          Number(item.paidAmount || 0),
+        ]);
+      });
+      rows.push([]);
+
+      rows.push(['توصيات']);
+      (report?.recommendations || []).forEach((item) => rows.push([item]));
+
+      const csv = rows.map((row) => row.map(toCsvCell).join(',')).join('\n');
+      downloadTextFile(csv, `monthly-report-${fileStamp}.csv`, 'text/csv;charset=utf-8;', true);
+      toast.success('تم تنزيل ملف CSV بنجاح.');
+    } catch {
+      toast.error('تعذر تصدير ملف CSV حالياً.');
+    } finally {
+      setExporting(null);
+    }
+  };
+
+  const handleExportJson = () => {
+    if (!report) {
+      toast.error('لا توجد بيانات للتصدير.');
+      return;
+    }
+    setExporting('json');
+    try {
+      const payload = {
+        exportedAt: new Date().toISOString(),
+        selectedPeriod: { year, month },
+        report,
+      };
+      downloadTextFile(
+        JSON.stringify(payload, null, 2),
+        `monthly-report-${fileStamp}.json`,
+        'application/json;charset=utf-8;'
+      );
+      toast.success('تم تنزيل ملف JSON بنجاح.');
+    } catch {
+      toast.error('تعذر تصدير ملف JSON حالياً.');
+    } finally {
+      setExporting(null);
+    }
+  };
+
   return (
     <div className="mr-page">
       <header className="mr-hero">
@@ -172,10 +308,24 @@ export default function MonthlyReportPage() {
               ))}
             </select>
           </label>
-          <button type="button" onClick={() => fetchReport(true)} disabled={loading}>
+          <button type="button" className="mr-refresh-btn" onClick={() => fetchReport(true)} disabled={loading || exporting !== null}>
             <IconRefresh size={15} />
             <span>{loading ? 'جاري التوليد...' : 'توليد التقرير'}</span>
           </button>
+          <div className="mr-export-buttons">
+            <button type="button" className="mr-export-btn" onClick={handleExportXlsx} disabled={loading || exporting !== null}>
+              <IconDownload size={14} />
+              <span>{exporting === 'xlsx' ? 'جاري التصدير...' : 'Excel'}</span>
+            </button>
+            <button type="button" className="mr-export-btn" onClick={handleExportCsv} disabled={loading || exporting !== null}>
+              <IconDownload size={14} />
+              <span>{exporting === 'csv' ? 'جاري التصدير...' : 'CSV'}</span>
+            </button>
+            <button type="button" className="mr-export-btn" onClick={handleExportJson} disabled={loading || exporting !== null}>
+              <IconDownload size={14} />
+              <span>{exporting === 'json' ? 'جاري التصدير...' : 'JSON'}</span>
+            </button>
+          </div>
         </div>
       </header>
 
