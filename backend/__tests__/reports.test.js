@@ -200,6 +200,8 @@ describe('Reports / Analytics Controller', () => {
             expect(Array.isArray(res.body.recommendations)).toBe(true);
             expect(Array.isArray(res.body.tracking?.najizCases)).toBe(true);
             expect(Array.isArray(res.body.tracking?.monthEndUnpaid)).toBe(true);
+            expect(res.body.tracking?.scope?.mode).toBe('from_selected_month');
+            expect(res.body.tracking?.scope?.fromDate).toBe('2026-03-01');
             expect(res.body.tracking?.integration?.overlappedCount).toBe(1);
         });
     });

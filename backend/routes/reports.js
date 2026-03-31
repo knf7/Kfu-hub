@@ -890,7 +890,6 @@ router.get('/monthly-summary', checkPermission('can_view_analytics'), async (req
                  WHERE l.merchant_id = $1
                    ${loanSql.deletedFilter('l')}
                    AND l.transaction_date >= $2
-                   AND l.transaction_date < $3
                    AND (
                      (${loanSql.isNajizCase('l')})
                      OR l.status = 'Raised'
@@ -898,7 +897,7 @@ router.get('/monthly-summary', checkPermission('can_view_analytics'), async (req
                    )
                  ORDER BY l.transaction_date DESC
                  LIMIT 200`,
-                [id, monthlyWindow.start, monthlyWindow.end]
+                [id, monthlyWindow.start]
             ],
             [
                 `SELECT
@@ -920,11 +919,10 @@ router.get('/monthly-summary', checkPermission('can_view_analytics'), async (req
                  WHERE l.merchant_id = $1
                    ${loanSql.deletedFilter('l')}
                    AND l.transaction_date >= $2
-                   AND l.transaction_date < $3
                    AND l.status NOT IN ('Paid', 'Cancelled')
                  ORDER BY l.transaction_date DESC
                  LIMIT 200`,
-                [id, monthlyWindow.start, monthlyWindow.end]
+                [id, monthlyWindow.start]
             ],
         ]);
 
@@ -1032,6 +1030,11 @@ router.get('/monthly-summary', checkPermission('can_view_analytics'), async (req
                 paidAmount: toPositiveNumber(row.paid_amount),
             })),
             tracking: {
+                scope: {
+                    mode: 'from_selected_month',
+                    fromDate: monthlyWindow.startDate,
+                    throughDate: formatIsoDate(new Date()),
+                },
                 najizCases,
                 monthEndUnpaid,
                 integration: {
