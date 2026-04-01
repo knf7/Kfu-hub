@@ -1,26 +1,21 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { usePathname, useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { customersAPI, loansAPI, reportsAPI } from '@/lib/api';
 import {
-  IconClipboard,
   IconAnalytics,
-  IconChevronLeft,
-  IconChevronRight,
+  IconClipboard,
   IconDashboard,
+  IconDiamond,
   IconLogout,
   IconLoans,
   IconMessageCircle,
-  IconPlus,
   IconScale,
   IconSettings,
   IconStar,
-  IconDiamond,
-  IconStore,
-  IconUpload,
   IconUsers,
 } from './icons';
 import AnimatedBackground from './AnimatedBackground';
@@ -39,59 +34,33 @@ type NavItem = {
   path: string;
   label: string;
   Icon: React.ComponentType<{ size?: number; color?: string; className?: string }>;
-  group: 'operations' | 'insights' | 'system';
 };
 
 const NAV_ITEMS: NavItem[] = [
-  { path: '/dashboard/quick-entry', label: 'الإدخال السريع', Icon: IconMessageCircle, group: 'operations' },
-  { path: '/dashboard', label: 'الرئيسية', Icon: IconDashboard, group: 'operations' },
-  { path: '/dashboard/customers', label: 'العملاء', Icon: IconUsers, group: 'operations' },
-  { path: '/dashboard/loans', label: 'القروض', Icon: IconLoans, group: 'operations' },
-  { path: '/dashboard/najiz', label: 'قضايا ناجز', Icon: IconScale, group: 'operations' },
-  { path: '/dashboard/monthly-report', label: 'التقرير الشهري', Icon: IconClipboard, group: 'insights' },
-  { path: '/dashboard/analytics', label: 'التحليلات', Icon: IconAnalytics, group: 'insights' },
-  { path: '/dashboard/settings', label: 'الإعدادات', Icon: IconSettings, group: 'system' },
+  { path: '/dashboard', label: 'الرئيسية', Icon: IconDashboard },
+  { path: '/dashboard/quick-entry', label: 'الإدخال السريع', Icon: IconMessageCircle },
+  { path: '/dashboard/customers', label: 'العملاء', Icon: IconUsers },
+  { path: '/dashboard/loans', label: 'القروض', Icon: IconLoans },
+  { path: '/dashboard/najiz', label: 'قضايا ناجز', Icon: IconScale },
+  { path: '/dashboard/monthly-report', label: 'التقرير الشهري', Icon: IconClipboard },
+  { path: '/dashboard/analytics', label: 'التحليلات', Icon: IconAnalytics },
+  { path: '/dashboard/settings', label: 'الإعدادات', Icon: IconSettings },
 ];
-
-const QUICK_ACTIONS = [
-  { path: '/dashboard/quick-entry', label: 'إدخال سريع', Icon: IconMessageCircle },
-  { path: '/dashboard/monthly-report', label: 'تقرير شهري', Icon: IconClipboard },
-  { path: '/dashboard/loans/new', label: 'إضافة قرض', Icon: IconPlus },
-  { path: '/dashboard/loans/import', label: 'رفع ملف', Icon: IconUpload },
-];
-
-const GROUP_LABELS: Record<NavItem['group'], string> = {
-  operations: 'التشغيل اليومي',
-  insights: 'الرؤية والتحليل',
-  system: 'النظام',
-};
-
-const PLAN_LABELS: Record<string, { label: string; color: string }> = {
-  free: { label: 'مجاني', color: '#64748b' },
-  basic: { label: 'أساسي', color: '#3B82F6' },
-  pro: { label: 'احترافي', color: '#8B5CF6' },
-  enterprise: { label: 'أعمال', color: '#60A5FA' },
-};
 
 const scheduleIdle = (callback: () => void) => {
   if (typeof window === 'undefined') return () => {};
-  const idle = (window as any).requestIdleCallback as ((cb: () => void, opts?: { timeout: number }) => number) | undefined;
-  const cancelIdle = (window as any).cancelIdleCallback as ((id: number) => void) | undefined;
+  const windowWithIdle = window as Window & {
+    requestIdleCallback?: (cb: () => void, opts?: { timeout?: number }) => number;
+    cancelIdleCallback?: (id: number) => void;
+  };
+  const idle = windowWithIdle.requestIdleCallback;
+  const cancelIdle = windowWithIdle.cancelIdleCallback;
   if (idle) {
     const id = idle(callback, { timeout: 2000 });
     return () => cancelIdle?.(id);
   }
   const id = window.setTimeout(callback, 600);
   return () => window.clearTimeout(id);
-};
-
-const SIDEBAR_COLLAPSED_KEY = 'ops-sidebar-collapsed';
-
-const readStoredSidebarState = () => {
-  if (typeof window === 'undefined') return true;
-  const stored = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
-  if (stored === null) return true;
-  return stored === '1';
 };
 
 const readStoredMerchant = (): Merchant => {
@@ -102,35 +71,6 @@ const readStoredMerchant = (): Merchant => {
     return {};
   }
 };
-
-function AseelLogoMark({ compact = false }: { compact?: boolean }) {
-  return (
-    <svg
-      viewBox="0 0 88 88"
-      className={`aseel-mark ${compact ? 'compact' : ''}`}
-      role="img"
-      aria-label="شعار أصيل المالي"
-    >
-      <defs>
-        <linearGradient id="aseel-core" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#93C5FD" />
-          <stop offset="100%" stopColor="#60A5FA" />
-        </linearGradient>
-        <linearGradient id="aseel-frame" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#E2E8F0" />
-          <stop offset="100%" stopColor="#94A3B8" />
-        </linearGradient>
-      </defs>
-
-      <rect x="18" y="18" width="52" height="52" rx="16" fill="url(#aseel-core)" />
-      <rect x="13" y="13" width="62" height="62" rx="20" fill="none" stroke="url(#aseel-frame)" strokeWidth="3" opacity="0.9" />
-      <rect x="30" y="31" width="7" height="26" rx="3.5" fill="#F8FAFC" />
-      <rect x="43" y="26" width="7" height="31" rx="3.5" fill="#E2E8F0" />
-      <rect x="56" y="36" width="7" height="21" rx="3.5" fill="#CBD5E1" />
-      <circle cx="59.5" cy="29.5" r="4.3" fill="#F8FAFC" />
-    </svg>
-  );
-}
 
 const findNavMatch = (currentPath: string) => {
   const matches = NAV_ITEMS.filter((item) => currentPath === item.path || currentPath?.startsWith(`${item.path}/`));
@@ -152,16 +92,13 @@ function Breadcrumb({ pathname }: { pathname: string }) {
 export default function LayoutShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-
-  const [collapsed, setCollapsed] = useState<boolean>(readStoredSidebarState);
-  const [mobileOpen, setMobileOpen] = useState(false);
   const [currentUser] = useState<Merchant>(readStoredMerchant);
   const merchant = currentUser;
-  const isCollapsed = collapsed && !mobileOpen;
   const [darkMode, setDarkMode] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
     return (localStorage.getItem('theme') || 'light') === 'dark';
   });
+  const [quickEntryExpanded, setQuickEntryExpanded] = useState(false);
 
   const currentTitle = useMemo(() => {
     const current = findNavMatch(pathname);
@@ -171,6 +108,7 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
   const hasPageAccess = useCallback((path: string) => {
     if (!currentUser.role || currentUser.role === 'merchant') return true;
     const perms = currentUser.permissions || {};
+    if (path === '/dashboard') return !!perms.can_view_dashboard;
     if (path.startsWith('/dashboard/quick-entry')) return !!perms.can_add_loans;
     if (path.startsWith('/dashboard/loans')) return !!perms.can_view_loans;
     if (path.startsWith('/dashboard/customers')) return !!perms.can_view_customers;
@@ -178,7 +116,6 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
     if (path.startsWith('/dashboard/monthly-report')) return !!(perms.can_view_dashboard || perms.can_view_analytics);
     if (path.startsWith('/dashboard/analytics')) return !!perms.can_view_analytics;
     if (path.startsWith('/dashboard/settings')) return !!perms.can_view_settings;
-    if (path === '/dashboard') return !!perms.can_view_dashboard;
     return true;
   }, [currentUser.permissions, currentUser.role]);
 
@@ -186,17 +123,27 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
     () => NAV_ITEMS.filter((item) => hasPageAccess(item.path)),
     [hasPageAccess]
   );
-  const visibleQuickActions = useMemo(() => {
-    if (!currentUser.role || currentUser.role === 'merchant') return QUICK_ACTIONS;
-    const perms = currentUser.permissions || {};
-    return QUICK_ACTIONS.filter((action) => {
-      if (action.path.includes('/quick-entry')) return !!perms.can_add_loans;
-      if (action.path.includes('/monthly-report')) return !!(perms.can_view_dashboard || perms.can_view_analytics);
-      if (action.path.includes('/new')) return !!perms.can_add_loans;
-      if (action.path.includes('/import')) return !!perms.can_upload_loans;
-      return true;
-    });
-  }, [currentUser.permissions, currentUser.role]);
+
+  const showQuickEntryShortcut = hasPageAccess('/dashboard/quick-entry') && pathname !== '/dashboard/quick-entry';
+
+  useEffect(() => {
+    setQuickEntryExpanded(false);
+  }, [pathname, showQuickEntryShortcut]);
+
+  useEffect(() => {
+    if (!quickEntryExpanded) return;
+    const timeoutId = window.setTimeout(() => setQuickEntryExpanded(false), 2600);
+    return () => window.clearTimeout(timeoutId);
+  }, [quickEntryExpanded]);
+
+  const handleQuickEntryShortcutClick = useCallback((event: React.MouseEvent<HTMLAnchorElement>) => {
+    if (!quickEntryExpanded) {
+      event.preventDefault();
+      setQuickEntryExpanded(true);
+      return;
+    }
+    setQuickEntryExpanded(false);
+  }, [quickEntryExpanded]);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light');
@@ -216,36 +163,12 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    localStorage.setItem(SIDEBAR_COLLAPSED_KEY, collapsed ? '1' : '0');
-  }, [collapsed]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
     const token = localStorage.getItem('token');
     if (!token && pathname !== '/login') {
       toast.error('انتهت الجلسة، الرجاء تسجيل الدخول مجدداً.');
       router.replace('/login');
     }
   }, [pathname, router]);
-
-  useEffect(() => {
-    const onEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setMobileOpen(false);
-    };
-    window.addEventListener('keydown', onEscape);
-    return () => window.removeEventListener('keydown', onEscape);
-  }, []);
-
-  useEffect(() => {
-    if (mobileOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
-    return () => {
-      document.body.style.overflow = '';
-    };
-  }, [mobileOpen]);
 
   useEffect(() => {
     if (!pathname || hasPageAccess(pathname)) return;
@@ -256,21 +179,25 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
   }, [pathname, hasPageAccess, router, visibleNavItems]);
 
   useEffect(() => {
-    if (!visibleNavItems.length && !visibleQuickActions.length) return;
-    const routeSet = new Set<string>();
-    visibleNavItems.forEach((item) => routeSet.add(item.path));
-    visibleQuickActions.forEach((item) => routeSet.add(item.path));
+    if (!visibleNavItems.length) return;
+    const routeSet = new Set<string>(visibleNavItems.map((item) => item.path));
     if (pathname) routeSet.delete(pathname);
     const routes = Array.from(routeSet);
     if (routes.length === 0) return;
     return scheduleIdle(() => {
       routes.forEach((path) => router.prefetch(path));
     });
-  }, [router, pathname, visibleNavItems, visibleQuickActions]);
+  }, [router, pathname, visibleNavItems]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const connection = (navigator as any)?.connection;
+    const nav = navigator as Navigator & {
+      connection?: {
+        saveData?: boolean;
+        effectiveType?: string;
+      };
+    };
+    const connection = nav.connection;
     if (connection?.saveData) return;
     if (typeof connection?.effectiveType === 'string' && ['slow-2g', '2g'].includes(connection.effectiveType)) {
       return;
@@ -308,8 +235,11 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
 
       try {
         const res = await reportsAPI.getDashboard({});
-        const d = res.data || res;
-        const overdueCount = Number(d?.metrics?.overdueCustomers || 0);
+        const maybeData = (res && typeof res === 'object' && 'data' in res)
+          ? (res as { data?: unknown }).data
+          : res;
+        const dashboardData = (maybeData || {}) as { metrics?: { overdueCustomers?: number } };
+        const overdueCount = Number(dashboardData.metrics?.overdueCustomers || 0);
         if (overdueCount > 0) {
           toast.warning(`تنبيه نهاية الشهر: لديك ${overdueCount.toLocaleString('en-US')} عميل متأخر عن السداد.`);
           localStorage.setItem(key, '1');
@@ -327,137 +257,88 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
     router.push('/login');
   }, [router]);
 
-  const plan = useMemo(
-    () => PLAN_LABELS[merchant.subscription_plan?.toLowerCase() || 'free'] || PLAN_LABELS.free,
-    [merchant.subscription_plan]
-  );
-
   return (
-    <div className={`ops-shell ${isCollapsed ? 'collapsed' : ''} ${mobileOpen ? 'mobile-open' : ''}`}>
+    <div className="ops-shell bottom-nav-mode">
       <AnimatedBackground />
-
-      {mobileOpen && <div className="mobile-overlay" onClick={() => setMobileOpen(false)} aria-hidden="true" />}
-
-      <button
-        className="mobile-menu-btn"
-        onClick={() => setMobileOpen(!mobileOpen)}
-        aria-label={mobileOpen ? 'إغلاق القائمة' : 'فتح القائمة'}
-        aria-controls="sidebar-nav"
-        aria-expanded={mobileOpen}
-      >
-        <span className={`hamburger ${mobileOpen ? 'open' : ''}`}><span /><span /><span /></span>
-      </button>
-
-      <aside id="sidebar" className="ops-sidebar" aria-label="القائمة الجانبية">
-        <div className="sidebar-top">
-          <div className="sidebar-brand">
-            <div className="brand-logo-creative" aria-label="أصيل المالي">
-              <AseelLogoMark compact={isCollapsed} />
-              {!isCollapsed && <div className="brand-logo-caption">إدارة ذكية للعملاء والمعاملات المالية</div>}
-            </div>
-            <button
-              className="collapse-btn"
-              type="button"
-              onClick={() => setCollapsed((prev) => !prev)}
-              aria-label={isCollapsed ? 'توسيع القائمة الجانبية' : 'طي القائمة الجانبية'}
-              aria-pressed={isCollapsed}
-            >
-              {isCollapsed ? <IconChevronLeft size={16} /> : <IconChevronRight size={16} />}
-            </button>
-          </div>
-
-          {!isCollapsed && (
-            <div className="sidebar-merchant">
-              <div className="merchant-avatar"><IconStore size={19} color="#fff" /></div>
-              <div className="merchant-info-text">
-                <div className="merchant-name">{merchant.store_name || 'المتجر'}</div>
-                <div className="merchant-email">{merchant.email || ''}</div>
-              </div>
-              <div
-                className="plan-badge"
-                style={{ background: `${plan.color}20`, color: plan.color, borderColor: `${plan.color}40` }}
-              >
-                {plan.label}
-              </div>
-            </div>
-          )}
-
-          {!isCollapsed && (
-            <div className="quick-actions" aria-label="إجراءات سريعة">
-              {visibleQuickActions.map(({ path, label, Icon }) => (
-                <Link key={path} href={path} className="quick-action" onClick={() => setMobileOpen(false)}>
-                  <Icon size={16} />
-                  <span>{label}</span>
-                </Link>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <nav id="sidebar-nav" className="sidebar-nav" aria-label="تنقل لوحة التحكم">
-          {(Object.keys(GROUP_LABELS) as NavItem['group'][]).map((group) => {
-            const items = visibleNavItems.filter((item) => item.group === group);
-            if (items.length === 0) return null;
-
-            return (
-              <section key={group} className="nav-group">
-                {!isCollapsed && <h3 className="nav-group-title">{GROUP_LABELS[group]}</h3>}
-                {items.map(({ path, label, Icon }) => {
-                  const active = pathname === path || pathname?.startsWith(`${path}/`);
-                  return (
-                    <Link
-                      key={path}
-                      href={path}
-                      className={`nav-item ${active ? 'active' : ''}`}
-                      aria-current={active ? 'page' : undefined}
-                      onClick={() => setMobileOpen(false)}
-                    >
-                      <span className="nav-icon"><Icon size={18} /></span>
-                      {!isCollapsed && <span className="nav-label">{label}</span>}
-                    </Link>
-                  );
-                })}
-              </section>
-            );
-          })}
-        </nav>
-
-        <div className="sidebar-footer">
-          <button
-            className="theme-toggle-btn"
-            onClick={() => setDarkMode(!darkMode)}
-            aria-label={darkMode ? 'تفعيل الوضع النهاري' : 'تفعيل الوضع الليلي'}
-            aria-pressed={darkMode}
-          >
-            <span className="theme-icon" aria-hidden="true">
-              {darkMode ? <IconDiamond size={18} /> : <IconStar size={18} />}
-            </span>
-            {!isCollapsed && <span className="theme-label">{darkMode ? 'وضع نهاري' : 'وضع ليلي'}</span>}
-          </button>
-
-          <button className="sidebar-logout" onClick={handleLogout} aria-label="تسجيل الخروج">
-            <IconLogout size={16} />
-            {!isCollapsed && <span>تسجيل الخروج</span>}
-          </button>
-        </div>
-      </aside>
 
       <main className="ops-main">
         <header className="topbar">
-          <div>
-            <h1 className="topbar-title">{currentTitle}</h1>
-            <Breadcrumb pathname={pathname} />
+          <div className="topbar-main">
+            <div>
+              <h1 className="topbar-title">{currentTitle}</h1>
+              <Breadcrumb pathname={pathname} />
+            </div>
+            {merchant.store_name && <div className="topbar-store">{merchant.store_name}</div>}
           </div>
-          <label className="command-box" aria-label="بحث سريع">
-            <input placeholder="ابحث عن عميل، قرض، أو أمر..." />
-            <kbd>⌘K</kbd>
-          </label>
+
+          <div className="topbar-actions">
+            {showQuickEntryShortcut && (
+              <Link
+                href="/dashboard/quick-entry"
+                className={`quick-entry-mini ${quickEntryExpanded ? 'expanded' : ''}`}
+                onClick={handleQuickEntryShortcutClick}
+                onBlur={() => setQuickEntryExpanded(false)}
+                aria-label="الإدخال السريع"
+                aria-expanded={quickEntryExpanded}
+                title={quickEntryExpanded ? 'فتح الإدخال السريع' : 'إدخال سريع'}
+              >
+                <IconMessageCircle size={15} />
+                <span>{quickEntryExpanded ? 'فتح الإدخال السريع' : 'إدخال سريع'}</span>
+              </Link>
+            )}
+            <label className="command-box" aria-label="بحث سريع">
+              <input placeholder="ابحث عن عميل، قرض، أو أمر..." />
+              <kbd>⌘K</kbd>
+            </label>
+          </div>
         </header>
 
         <section className="page-surface">
           {children}
         </section>
       </main>
+
+      <nav className="bottom-dock" aria-label="التنقل السفلي">
+        <div className="bottom-dock-inner">
+          {visibleNavItems.map(({ path, label, Icon }) => {
+            const active = pathname === path || pathname?.startsWith(`${path}/`);
+            return (
+              <Link
+                key={path}
+                href={path}
+                className={`dock-item ${active ? 'active' : ''}`}
+                aria-current={active ? 'page' : undefined}
+                title={label}
+              >
+                <span className="dock-icon"><Icon size={18} /></span>
+                <span className="dock-label">{label}</span>
+              </Link>
+            );
+          })}
+
+          <button
+            type="button"
+            className="dock-item dock-action"
+            onClick={() => setDarkMode((prev) => !prev)}
+            aria-label={darkMode ? 'تفعيل الوضع النهاري' : 'تفعيل الوضع الليلي'}
+            title={darkMode ? 'وضع نهاري' : 'وضع ليلي'}
+          >
+            <span className="dock-icon">{darkMode ? <IconDiamond size={18} /> : <IconStar size={18} />}</span>
+            <span className="dock-label">{darkMode ? 'نهاري' : 'ليلي'}</span>
+          </button>
+
+          <button
+            type="button"
+            className="dock-item dock-action danger"
+            onClick={handleLogout}
+            aria-label="تسجيل الخروج"
+            title="تسجيل الخروج"
+          >
+            <span className="dock-icon"><IconLogout size={17} /></span>
+            <span className="dock-label">خروج</span>
+          </button>
+        </div>
+      </nav>
 
       <SupportWidget />
     </div>
