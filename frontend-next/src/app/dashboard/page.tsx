@@ -4,7 +4,7 @@ import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-    AreaChart, Area, PieChart, Pie, Cell,
+    AreaChart, Area,
     XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
 import { loansAPI, reportsAPI, DASHBOARD_DIRTY_KEY } from '@/lib/api';
@@ -12,8 +12,8 @@ import { useDataSync } from '@/hooks/useDataSync';
 import {
     DollarSign, Users, Calendar, CheckCircle2, AlertTriangle,
     TrendingUp, TrendingDown, Download, Plus, Rocket,
-    Shield, User, AlertCircle, Info, ClipboardList, PieChart as PieChartIcon,
-    CreditCard, Upload, BarChart3, BadgeDollarSign
+    Shield, AlertCircle, Info, ClipboardList,
+    CreditCard, BadgeDollarSign
 } from 'lucide-react';
 import './dashboard.css';
 
@@ -33,8 +33,6 @@ const STATUS_MAP: Record<string, { label: string; color: string }> = {
 const CHART_INTERVALS = [
     { id: 'week', label: 'أسبوعي' },
     { id: 'month', label: 'شهري' },
-    { id: '6months', label: '6 شهور' },
-    { id: 'year', label: 'سنوي' },
 ];
 
 const CACHE_TTL_MS = 1000 * 60 * 10;
@@ -72,26 +70,12 @@ const writePersisted = (key: string, data: any) => {
     } catch { /* ignore */ }
 };
 
-const QUICK_ACTIONS = [
-    { Icon: Rocket, label: 'الإدخال السريع', sub: 'إنشاء قرض عبر الشات الذكي', path: '/dashboard/quick-entry', color: 'var(--info)' },
-    { Icon: ClipboardList, label: 'تقرير شهري', sub: 'ملخص مفصل لأداء الشهر', path: '/dashboard/monthly-report', color: 'var(--warning)' },
-    { Icon: Plus, label: 'إضافة قرض جديد', sub: 'تسجيل عميل وقرض يدوي', path: '/dashboard/loans/new', color: 'var(--coral)' },
-    { Icon: Users, label: 'إدارة العملاء', sub: 'عرض وتعديل البيانات', path: '/dashboard/customers', color: 'var(--info)' },
-    { Icon: Upload, label: 'رفع ملف Excel', sub: 'استيراد بيانات دفعي', path: '/dashboard/loans/import', color: 'var(--success)' },
-];
-
 const INSIGHT_ICONS: Record<string, React.ReactNode> = {
     danger: <AlertCircle size={18} color="var(--danger)" />,
     warning: <AlertTriangle size={18} color="var(--warning)" />,
     success: <CheckCircle2 size={18} color="var(--success)" />,
     info: <Info size={18} color="var(--info)" />,
 };
-
-const STAT_CATEGORIES = [
-    { id: 'finance', label: 'الأرقام المالية', Icon: DollarSign },
-    { id: 'customers', label: 'العملاء والقروض', Icon: Users },
-    { id: 'najiz', label: 'قضايا ناجز', Icon: Shield },
-] as const;
 
 // ─── Stat Card ─────────────────────────────────
 const StatCard = React.memo(function StatCard({ label, value, sub, Icon, color, trend, loading, onClick }: any) {
@@ -157,25 +141,6 @@ const InsightCard = React.memo(function InsightCard({ ins }: { ins: any }) {
     );
 });
 
-// ─── Risk Meter ───────────────────────────────
-const RiskMeter = React.memo(function RiskMeter({ high, med, low }: { high: number; med: number; low: number }) {
-    const total = (high + med + low) || 1;
-    return (
-        <div className="risk-meter">
-            <div className="risk-bar-wrap">
-                <div className="risk-segment risk-high" style={{ width: `${(high / total) * 100}%` }} title={`خطر عال: ${high}`} />
-                <div className="risk-segment risk-med" style={{ width: `${(med / total) * 100}%` }} title={`خطر متوسط: ${med}`} />
-                <div className="risk-segment risk-low" style={{ width: `${(low / total) * 100}%` }} title={`متابعة: ${low}`} />
-            </div>
-            <div className="risk-legend">
-                <span><span className="risk-dot risk-high" />{high} عالي</span>
-                <span><span className="risk-dot risk-med" />{med} متوسط</span>
-                <span><span className="risk-dot risk-low" />{low} منخفض</span>
-            </div>
-        </div>
-    );
-});
-
 // ─── Free Trial Banner ────────────────────────
 const FreeTrialBanner = React.memo(function FreeTrialBanner({ expiryDate }: { expiryDate: string }) {
     const [timeLeft, setTimeLeft] = useState('');
@@ -217,9 +182,11 @@ export default function DashboardPage() {
     const [chartInterval, setChartInterval] = useState('week');
     const [toasts, setToasts] = useState<any[]>([]);
     const [rabbitInput, setRabbitInput] = useState('');
+    const [rabbitExpanded, setRabbitExpanded] = useState(false);
     const [merchant, setMerchant] = useState<any>({});
     const [todayLabel, setTodayLabel] = useState('');
     const notifiedRef = useRef({ overdue: false, highRisk: false, summaryError: false });
+    const rabbitInputRef = useRef<HTMLInputElement | null>(null);
     const [enableHeavyFetch, setEnableHeavyFetch] = useState(false);
     const [refreshToken, setRefreshToken] = useState(0);
 
@@ -416,17 +383,7 @@ export default function DashboardPage() {
         });
     }, [analytics, chartInterval]);
 
-    const statusDist = useMemo(() => (
-        (analytics.statusDistribution || []).map((r: any) => ({
-            ...r,
-            label: STATUS_MAP[r.status]?.label || r.status,
-            color: STATUS_MAP[r.status]?.color || 'var(--text-muted)',
-            count: parseInt(r.count, 10) || 0
-        }))
-    ), [analytics]);
-
-    const pieData = useMemo(() => statusDist.filter((d: any) => d.count > 0), [statusDist]);
-    const hasCharts = useMemo(() => debtTrend.length > 0 || pieData.length > 0, [debtTrend, pieData]);
+    const hasCharts = useMemo(() => debtTrend.length > 0, [debtTrend]);
 
     const aiData = aiQuery.data ?? null;
     const ai = useMemo(() => aiData?.summary || {}, [aiData]);
@@ -449,10 +406,6 @@ export default function DashboardPage() {
     const insights = useMemo(() => aiData?.insights || [], [aiData]);
     const overdueClients = useMemo(() => aiData?.overdueClients || [], [aiData]);
     const recommendations = useMemo(() => aiData?.recommendations || [], [aiData]);
-    const risk = useMemo(
-        () => ai.riskSegmentation || { highRisk: 0, medRisk: 0, lowRisk: 0 },
-        [ai]
-    );
     const isInitialLoading = summaryQuery.isLoading && !summaryQuery.data;
     const hasCachedSummary = Boolean(summaryQuery.data);
 
@@ -475,6 +428,8 @@ export default function DashboardPage() {
     const handleNajizClick = useCallback(() => router.push('/dashboard/najiz'), [router]);
     const handleDelayedClick = useCallback(() => router.push('/dashboard/loans?delayed=true'), [router]);
     const handleNewLoanClick = useCallback(() => router.push('/dashboard/loans/new'), [router]);
+    const openRabbitEntry = useCallback(() => setRabbitExpanded(true), []);
+    const closeRabbitEntry = useCallback(() => setRabbitExpanded(false), []);
     const handleRabbitSubmit = useCallback((event: React.FormEvent) => {
         event.preventDefault();
         const payload = String(rabbitInput || '').trim();
@@ -509,11 +464,11 @@ export default function DashboardPage() {
         {
             id: 'totalCustomers',
             category: 'customers',
-            label: 'إجمالي العملاء',
+            label: 'العملاء النشطين',
             Icon: Users,
             color: 'var(--info)',
-            value: metrics?.totalCustomers || 0,
-            sub: `${metrics?.activeCustomers || 0} لديهم قروض نشطة`,
+            value: metrics?.activeCustomers || 0,
+            sub: `من أصل ${metrics?.totalCustomers || 0} عميل`,
         },
         {
             id: 'loansThisMonth',
@@ -585,11 +540,56 @@ export default function DashboardPage() {
         },
     ]), [ai.growthRate, handleDelayedClick, handleNajizClick, metrics, najizSummary]);
 
-    // Select the most crucial stats to display by default (simplified UI):
+    // Select the focused KPI cards inspired by the requested overview style
     const visibleStats = useMemo(() => {
-        const priorityIds = ['totalDebt', 'totalProfit', 'totalCustomers', 'najizRemaining', 'overdueCustomers'];
+        const priorityIds = ['totalDebt', 'totalProfit', 'totalCustomers', 'overdueCustomers'];
         return statCards.filter((card) => priorityIds.includes(card.id));
     }, [statCards]);
+    const topInsights = useMemo(() => insights.slice(0, 3), [insights]);
+    const monthlyDigest = useMemo(() => {
+        const collectionRate = Number(metrics?.collectionRate || 0);
+        const overdue = Number(metrics?.overdueCustomers || 0);
+        const loansThisMonth = Number(metrics?.loansThisMonth || 0);
+        const activeCustomers = Number(metrics?.activeCustomers || 0);
+        const totalCustomers = Number(metrics?.totalCustomers || 0);
+        const totalProfit = Number(metrics?.totalProfit || 0);
+        const totalDebt = Number(metrics?.totalDebt || 0);
+
+        const tone = collectionRate >= 80 && overdue === 0
+            ? 'excellent'
+            : collectionRate >= 65
+                ? 'good'
+                : 'attention';
+
+        const title = tone === 'excellent'
+            ? 'أداء الشهر ممتاز والتحصيل في مستوى قوي'
+            : tone === 'good'
+                ? 'أداء الشهر مستقر مع فرصة تحسين التحصيل'
+                : 'الشهر يحتاج متابعة أدق لحالات التأخر';
+
+        const bullets = [
+            `الأرباح المتحققة: ${totalProfit.toLocaleString('en-US')} ﷼`,
+            `إجمالي المحفظة النشطة: ${totalDebt.toLocaleString('en-US')} ﷼`,
+            overdue > 0 ? `يوجد ${overdue} عميل متأخر (+30 يوم).` : 'لا توجد حالات تأخر (+30 يوم).',
+            `العملاء النشطون: ${activeCustomers} من أصل ${totalCustomers}.`,
+        ];
+
+        return {
+            tone,
+            title,
+            lead: `تمت إضافة ${loansThisMonth} قرض خلال هذا الشهر، ونسبة التحصيل الحالية ${collectionRate.toLocaleString('en-US', { maximumFractionDigits: 1 })}%.`,
+            collectionRate,
+            overdue,
+            loansThisMonth,
+            bullets,
+        };
+    }, [metrics]);
+
+    useEffect(() => {
+        if (!rabbitExpanded) return;
+        const frame = window.requestAnimationFrame(() => rabbitInputRef.current?.focus());
+        return () => window.cancelAnimationFrame(frame);
+    }, [rabbitExpanded]);
 
     if (isInitialLoading) {
         return (
@@ -611,7 +611,8 @@ export default function DashboardPage() {
 
             {/* Page Header */}
             <div className="db-header fade-up">
-                <div>
+                <div className="db-header-main">
+                    <span className="db-kicker">مساحة التشغيل اليومية</span>
                     <h1 className="db-title">لوحة التحكم</h1>
                     <p className="db-subtitle">
                         {todayLabel}
@@ -619,8 +620,8 @@ export default function DashboardPage() {
                     </p>
                 </div>
                 <div className="db-actions">
-                    <button className="btn btn-quick-mini" onClick={() => router.push('/dashboard/quick-entry')}>
-                        <Rocket size={15} /> الإدخال السريع
+                    <button className="btn btn-secondary" onClick={() => router.push('/dashboard/monthly-report')}>
+                        <ClipboardList size={16} /> التقرير الشهري
                     </button>
                     <button className="btn btn-secondary" onClick={handleExportCSV}>
                         <Download size={16} /> تصدير CSV
@@ -631,50 +632,57 @@ export default function DashboardPage() {
                 </div>
             </div>
 
-            <section className="rabbit-entry fade-up">
-                <div className="rabbit-glow" />
-                <div className="rabbit-head">
-                    <div className="rabbit-title-wrap">
-                        <Rocket size={18} />
-                        <h2>Rabbit Entry</h2>
-                    </div>
-                    <p>اكتب البيانات هنا مباشرة، وRabbit ينقلها ويفهمها داخل الإدخال السريع تلقائيًا.</p>
-                </div>
-                <form className="rabbit-form" onSubmit={handleRabbitSubmit}>
-                    <input
-                        value={rabbitInput}
-                        onChange={(event) => setRabbitInput(event.target.value)}
-                        placeholder="مثال: عميل جديد محمد، الهوية 1023..., الجوال 055..., مبلغ 25000"
-                    />
-                    <button type="submit" className="btn btn-primary" disabled={!rabbitInput.trim()}>
-                        <Rocket size={15} /> إرسال إلى Rabbit
+            <section className={`rabbit-entry ${rabbitExpanded ? 'rabbit-entry-expanded' : 'rabbit-entry-compact'} fade-up`}>
+                {!rabbitExpanded ? (
+                    <button
+                        type="button"
+                        className="rabbit-expand-tile"
+                        onClick={openRabbitEntry}
+                        aria-label="فتح الإدخال السريع"
+                    >
+                        <span className="rabbit-expand-icon"><Rocket size={28} /></span>
+                        <span className="rabbit-expand-title">الإدخال السريع</span>
+                        <span className="rabbit-expand-sub">اضغط للتوسيع</span>
                     </button>
-                </form>
-                <div className="rabbit-presets">
-                    {rabbitPresets.map((preset) => (
-                        <button key={preset} type="button" onClick={() => setRabbitInput(preset)}>
-                            {preset}
-                        </button>
-                    ))}
-                </div>
+                ) : (
+                    <>
+                        <div className="rabbit-head">
+                            <div className="rabbit-title-wrap">
+                                <Rocket size={18} />
+                                <h2>Rabbit AI • الإدخال السريع</h2>
+                            </div>
+                            <p>أدخل بيانات القرض أو العميل بسطر واحد وسنحوّلها مباشرة إلى الإدخال الذكي.</p>
+                        </div>
+                        <form className="rabbit-command" onSubmit={handleRabbitSubmit}>
+                            <div className="rabbit-command-brand">
+                                <Rocket size={18} />
+                                <span>Rabbit</span>
+                            </div>
+                            <input
+                                ref={rabbitInputRef}
+                                value={rabbitInput}
+                                onChange={(event) => setRabbitInput(event.target.value)}
+                                placeholder="مثال: عميل جديد محمد، الهوية 1023..., الجوال 055..., مبلغ 25000"
+                            />
+                            <button type="submit" className="btn btn-primary rabbit-send-btn" disabled={!rabbitInput.trim()}>
+                                إدخال سريع
+                            </button>
+                        </form>
+                        <div className="rabbit-presets">
+                            {rabbitPresets.map((preset) => (
+                                <button key={preset} type="button" onClick={() => setRabbitInput(preset)}>
+                                    {preset}
+                                </button>
+                            ))}
+                        </div>
+                        <div className="rabbit-collapse-wrap">
+                            <button type="button" className="rabbit-collapse-btn" onClick={closeRabbitEntry}>
+                                تصغير
+                            </button>
+                        </div>
+                    </>
+                )}
             </section>
-
-            <div className="quick-actions-section fade-up">
-                <div className="quick-actions-rail">
-                    {QUICK_ACTIONS.map((a) => (
-                        <button key={a.path} className="quick-action-pill" onClick={() => router.push(a.path)}>
-                            <span className="qa-icon" style={{ background: `color-mix(in srgb, ${a.color} 14%, transparent)`, color: a.color }}>
-                                <a.Icon size={18} color={a.color} />
-                            </span>
-                            <span className="qa-text">
-                                <b>{a.label}</b>
-                                <small>{a.sub}</small>
-                            </span>
-                            <BarChart3 size={14} color="var(--text-muted)" />
-                        </button>
-                    ))}
-                </div>
-            </div>
 
             {/* Essential Key Metrics */}
             <div className="stats-grid fade-up" style={{ marginBottom: '32px' }}>
@@ -752,21 +760,16 @@ export default function DashboardPage() {
                     <div className="chart-header">
                         <div>
                             <h3 className="chart-title">
-                                <TrendingUp size={16} color="var(--coral)" /> حركة القروض
+                                <TrendingUp size={16} color="var(--coral)" /> حركة المبالغ
                             </h3>
-                            <p className="chart-sub">تتبع مبالغ القروض عبر الزمن</p>
+                            <p className="chart-sub">تتبع المبالغ المرفوعة والمحصلة خلال الشهر</p>
                         </div>
-                        <div className="chart-interval-selector" style={{ display: 'flex', gap: '5px', background: 'rgba(26,43,74,0.05)', padding: '4px', borderRadius: '8px' }}>
+                        <div className="chart-interval-selector">
                             {CHART_INTERVALS.map(btn => (
                                 <button
                                     key={btn.id}
                                     className={`btn-interval ${chartInterval === btn.id ? 'active' : ''}`}
                                     onClick={() => setChartInterval(btn.id)}
-                                    style={{
-                                        fontSize: '0.75rem', padding: '4px 10px', border: 'none', borderRadius: '6px',
-                                        cursor: 'pointer', background: chartInterval === btn.id ? 'var(--coral)' : 'transparent',
-                                        color: chartInterval === btn.id ? '#fff' : 'var(--text-muted)', transition: 'all 0.2s'
-                                    }}
                                 >
                                     {btn.label}
                                 </button>
@@ -804,71 +807,64 @@ export default function DashboardPage() {
                         </ResponsiveContainer>
                     )}
                 </div>
-
-                {/* Pie Chart + Risk */}
-                <div className="chart-card chart-card-sm">
-                    <div className="chart-header">
-                        <div>
-                            <h3 className="chart-title">
-                                <PieChartIcon size={16} color="var(--warning)" /> توزيع حالات القروض
-                            </h3>
-                            <p className="chart-sub">نسبة كل حالة</p>
-                        </div>
-                    </div>
-                    {pieData.length === 0 ? (
-                        <div className="chart-empty">
-                            <PieChartIcon size={36} color="var(--border)" />
-                            <p>لا توجد بيانات</p>
-                        </div>
-                    ) : (
-                        <>
-                            <ResponsiveContainer width="100%" height={180}>
-                                <PieChart>
-                                    <Pie data={pieData} cx="50%" cy="50%" innerRadius={52} outerRadius={78}
-                                        paddingAngle={3} dataKey="count">
-                                        {pieData.map((e: any, i: number) => <Cell key={i} fill={e.color} />)}
-                                    </Pie>
-                                    <Tooltip
-                                        formatter={(v: any, n: any, p: any) => [v, p.payload.label]}
-                                        contentStyle={{ background: '#1A2B4A', border: 'none', borderRadius: 8, color: '#fff', fontSize: 12 }}
-                                    />
-                                </PieChart>
-                            </ResponsiveContainer>
-                            <div className="pie-legend">
-                                {pieData.map((d: any, i: number) => (
-                                    <div key={i} className="pie-legend-item">
-                                        <span className="pie-dot" style={{ background: d.color }} />
-                                        <span>{d.label}</span>
-                                        <span className="pie-count">{d.count}</span>
-                                    </div>
-                                ))}
-                            </div>
-                        </>
-                    )}
-
-                    {/* Risk Segmentation */}
-                    {(risk.highRisk + risk.medRisk + risk.lowRisk) > 0 && (
-                        <div className="chart-divider">
-                            <div className="chart-sub-title">
-                                <Shield size={14} color="var(--coral)" /> تصنيف المخاطر
-                            </div>
-                            <RiskMeter high={risk.highRisk} med={risk.medRisk} low={risk.lowRisk} />
-                        </div>
-                    )}
-                </div>
             </div>
 
-            {/* AI Analysis Section */}
-            {subscriptionPlan !== 'enterprise' ? (
-                <div className="ai-section fade-up locked-tier-section">
-                    <div className="locked-overlay">
-                        <Shield size={32} color="var(--warning)" />
-                        <h3>تحليلات الذكاء الاصطناعي مقفلة</h3>
-                        <p>تتطلب هذه الميزة باقة الأعمال (Enterprise). قم بترقية باقتك للوصول إلى توقعات الميزانية وتحليل المخاطر المتقدم.</p>
-                        <button className="btn btn-primary" onClick={() => router.push('/dashboard/settings')}>ترقية الباقة الآن</button>
+            {/* Monthly Brief */}
+            <section className={`monthly-brief fade-up monthly-${monthlyDigest.tone}`}>
+                <div className="monthly-brief-head">
+                    <div className="monthly-brief-title-wrap">
+                        <ClipboardList size={18} />
+                        <h3>الزبدة الشهرية</h3>
+                    </div>
+                    <span className="monthly-brief-badge">
+                        {monthlyDigest.collectionRate.toLocaleString('en-US', { maximumFractionDigits: 1 })}% تحصيل
+                    </span>
+                </div>
+                <div className="monthly-brief-grid">
+                    <div className="monthly-brief-main">
+                        <h4>{monthlyDigest.title}</h4>
+                        <p>{monthlyDigest.lead}</p>
+                        <ul className="monthly-brief-points">
+                            {monthlyDigest.bullets.map((point) => (
+                                <li key={point}>{point}</li>
+                            ))}
+                        </ul>
+                    </div>
+                    <div className="monthly-brief-side">
+                        <div className="monthly-mini-card">
+                            <small>قروض هذا الشهر</small>
+                            <strong>{monthlyDigest.loansThisMonth.toLocaleString('en-US')}</strong>
+                        </div>
+                        <div className="monthly-mini-card">
+                            <small>عملاء متأخرون</small>
+                            <strong>{monthlyDigest.overdue.toLocaleString('en-US')}</strong>
+                        </div>
+                        {hasAiPredictions && (
+                            <div className="monthly-mini-card accent">
+                                <small>ميزانية الشهر القادم (تقديري)</small>
+                                <strong>{Number(nextMonthBudget || 0).toLocaleString('en-US')} ﷼</strong>
+                                <span>استيعاب المخاطر: {Number(highRiskCapacityPercent || 0).toLocaleString('en-US')}%</span>
+                            </div>
+                        )}
                     </div>
                 </div>
-            ) : insights.length > 0 && (
+
+                {topInsights.length > 0 && (
+                    <div className="monthly-insight-grid">
+                        {topInsights.map((ins: any, i: number) => <InsightCard key={i} ins={ins} />)}
+                    </div>
+                )}
+
+                {recommendations.length > 0 && (
+                    <div className="monthly-recommendations">
+                        {recommendations.slice(0, 3).map((item: string) => (
+                            <div key={item} className="monthly-recommendation-item">{item}</div>
+                        ))}
+                    </div>
+                )}
+            </section>
+
+            {insights.length > 0 && (
                 <div className="ai-section fade-up">
                     <div className="section-header">
                         <div className="section-title-wrap">
@@ -876,8 +872,8 @@ export default function DashboardPage() {
                                 <Rocket size={16} color="var(--warning)" />
                             </div>
                             <div>
-                                <h3 className="section-title">تحليل ذكي للمحفظة (باقة الأعمال)</h3>
-                                <p className="section-sub">رؤى مُولّدة من بياناتك الفعلية مع خوارزمية المخاطر</p>
+                                <h3 className="section-title">تفاصيل التحليل الذكي</h3>
+                                <p className="section-sub">رؤى مختصرة من بيانات التشغيل الحالية</p>
                             </div>
                         </div>
                         {aiData?.generatedAt && (
@@ -887,44 +883,9 @@ export default function DashboardPage() {
                         )}
                     </div>
 
-                    {/* AI Predictions */}
-                    {hasAiPredictions && (
-                        <div className="ai-predictions-grid">
-                            <div className="ai-prediction-card">
-                                <h4>ميزانية الشهر القادم المتوقعة</h4>
-                                <div className="ai-pred-value">{nextMonthBudget?.toLocaleString('en-US')} ﷼</div>
-                                <p>خوارزمية الذكاء الاصطناعي بناءً على متوسط التحصيل والنمو.</p>
-                            </div>
-                            <div className="ai-prediction-card">
-                                <h4>استيعاب القروض عالية المخاطر</h4>
-                                <div className="ai-pred-value" style={{ color: highRiskCapacityPercent && highRiskCapacityPercent > 0 ? 'var(--success)' : 'var(--danger)' }}>
-                                    {highRiskCapacityPercent}%
-                                </div>
-                                <p>الحد الآمن الموصى به لإقراض عملاء جدد بمخاطر عالية حالياً.</p>
-                            </div>
-                        </div>
-                    )}
-
                     <div className="insights-grid">
                         {insights.map((ins: any, i: number) => <InsightCard key={i} ins={ins} />)}
                     </div>
-
-                    {/* Recommendations */}
-                    {recommendations.length > 0 && (
-                        <div className="recommendations-wrap">
-                            <div className="rec-title">
-                                <ClipboardList size={14} color="var(--coral)" /> توصيات مقترحة
-                            </div>
-                            <ul className="rec-list">
-                                {recommendations.map((r: any, i: number) => (
-                                    <li key={i} className="rec-item">
-                                        <span className="rec-num">{i + 1}</span>
-                                        {r}
-                                    </li>
-                                ))}
-                            </ul>
-                        </div>
-                    )}
                 </div>
             )}
 
