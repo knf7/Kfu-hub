@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback, useMemo, useDeferredValue, use
 import { useRouter } from 'next/navigation';
 import { customersAPI } from '@/lib/api';
 import { appToast } from '@/components/ui/sonner';
+import { EmptyState, ErrorState, TableSkeleton } from '@/components/ui/async-state';
 import { IconWhatsapp, IconScale, IconEdit } from '@/components/layout/icons';
 import { useDataSync } from '@/hooks/useDataSync';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -226,6 +227,8 @@ export default function CustomersPage() {
         return items;
     }, [page, totalPages]);
 
+    const hasSearchValue = Boolean(String(search || '').trim());
+
     return (
         <div className="customers-page-container">
             {showAdd && (
@@ -319,21 +322,51 @@ export default function CustomersPage() {
             </div>
 
             <div className="table-card fade-up">
-                {errorMsg && customers.length === 0 && (
-                    <div className="form-error" style={{ margin: '12px' }}>
-                        {errorMsg}
-                    </div>
-                )}
                 {loading ? (
-                    <div className="table-loading">
-                        <div className="db-spinner" />
-                        <p>جاري التحميل...</p>
-                    </div>
+                    <TableSkeleton rows={8} columns={8} />
+                ) : errorMsg && customers.length === 0 ? (
+                    <ErrorState
+                        title="تعذر تحميل العملاء"
+                        description={errorMsg}
+                        primaryAction={{
+                            label: 'إعادة المحاولة',
+                            onClick: () => {
+                                setLoading(true);
+                                fetchCustomers(page, { forceFresh: true });
+                            },
+                        }}
+                        secondaryAction={{
+                            label: 'الإدخال السريع',
+                            onClick: () => router.push('/dashboard/quick-entry'),
+                        }}
+                    />
                 ) : customers.length === 0 ? (
-                    <div className="table-empty">
-                        <p>لا يوجد عملاء{search ? ' بهذا البحث' : ' بعد'}</p>
-                        {!search && <button className="btn btn-primary" onClick={() => setShowAdd(true)}>إضافة أول عميل</button>}
-                    </div>
+                    <EmptyState
+                        title={hasSearchValue ? 'لا توجد نتائج مطابقة' : 'لا يوجد عملاء بعد'}
+                        description={hasSearchValue
+                            ? 'عدّل البحث أو امسحه لاستعراض كامل قائمة العملاء.'
+                            : 'ابدأ بإضافة أول عميل الآن لتظهر السجلات هنا.'}
+                        primaryAction={{
+                            label: hasSearchValue ? 'مسح البحث' : 'إضافة أول عميل',
+                            onClick: () => {
+                                if (hasSearchValue) {
+                                    startTransition(() => {
+                                        setSearch('');
+                                        setPage(1);
+                                    });
+                                    return;
+                                }
+                                setShowAdd(true);
+                            },
+                        }}
+                        secondaryAction={{
+                            label: 'إعادة التحميل',
+                            onClick: () => {
+                                setLoading(true);
+                                fetchCustomers(page, { forceFresh: true });
+                            },
+                        }}
+                    />
                 ) : (
                     <div className="table-scroll">
                         <table className="data-table">

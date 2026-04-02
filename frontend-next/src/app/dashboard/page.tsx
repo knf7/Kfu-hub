@@ -9,11 +9,12 @@ import {
 } from 'recharts';
 import { loansAPI, reportsAPI, DASHBOARD_DIRTY_KEY } from '@/lib/api';
 import { useDataSync } from '@/hooks/useDataSync';
+import { DashboardSkeleton, EmptyState, ErrorState } from '@/components/ui/async-state';
 import {
     DollarSign, Users, Calendar, CheckCircle2, AlertTriangle,
     TrendingUp, TrendingDown, Download, Plus, Rocket,
     Shield, AlertCircle, Info, ClipboardList,
-    CreditCard, BadgeDollarSign
+    BadgeDollarSign
 } from 'lucide-react';
 import './dashboard.css';
 
@@ -408,6 +409,7 @@ export default function DashboardPage() {
     const recommendations = useMemo(() => aiData?.recommendations || [], [aiData]);
     const isInitialLoading = summaryQuery.isLoading && !summaryQuery.data;
     const hasCachedSummary = Boolean(summaryQuery.data);
+    const hasCriticalSummaryError = summaryQuery.isError && !hasCachedSummary;
 
     useEffect(() => {
         const highRisk = ai?.riskSegmentation?.highRisk || 0;
@@ -591,12 +593,32 @@ export default function DashboardPage() {
         return () => window.cancelAnimationFrame(frame);
     }, [rabbitExpanded]);
 
+    if (hasCriticalSummaryError) {
+        return (
+            <ErrorState
+                title="تعذر تحميل لوحة التحكم"
+                description="حدث خطأ أثناء جلب البيانات الأساسية. يمكنك إعادة المحاولة الآن أو استخدام الإدخال السريع مؤقتاً."
+                primaryAction={{
+                    label: 'إعادة المحاولة الآن',
+                    onClick: () => {
+                        setRefreshToken(Date.now());
+                        setEnableHeavyFetch(true);
+                        summaryQuery.refetch();
+                        analyticsQuery.refetch();
+                        aiQuery.refetch();
+                    },
+                }}
+                secondaryAction={{
+                    label: 'فتح الإدخال السريع',
+                    onClick: () => router.push('/dashboard/quick-entry'),
+                }}
+            />
+        );
+    }
+
     if (isInitialLoading) {
         return (
-            <div className="db-loading">
-                <div className="db-spinner" />
-                <p>جاري تحميل البيانات...</p>
-            </div>
+            <DashboardSkeleton />
         );
     }
 
@@ -777,13 +799,21 @@ export default function DashboardPage() {
                         </div>
                     </div>
                     {!hasCharts ? (
-                        <div className="chart-empty">
-                            <CreditCard size={40} color="var(--border)" />
-                            <p>لا توجد بيانات بعد</p>
-                            <button className="btn btn-primary btn-sm" onClick={() => router.push('/dashboard/loans/new')}>
-                                <Plus size={14} /> إضافة أول قرض
-                            </button>
-                        </div>
+                        <EmptyState
+                            title="لا توجد بيانات حركة بعد"
+                            description="أضف أول قرض أو انتظر أول تحديث دوري لتظهر حركة المبالغ هنا."
+                            primaryAction={{
+                                label: 'إضافة أول قرض',
+                                onClick: () => router.push('/dashboard/loans/new'),
+                            }}
+                            secondaryAction={{
+                                label: 'إعادة التحميل',
+                                onClick: () => {
+                                    setRefreshToken(Date.now());
+                                    analyticsQuery.refetch();
+                                },
+                            }}
+                        />
                     ) : (
                         <ResponsiveContainer width="100%" height={260}>
                             <AreaChart data={debtTrend} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>

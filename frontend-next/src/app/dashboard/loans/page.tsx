@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback, useMemo, useDeferredValue, use
 import { useRouter, useSearchParams } from 'next/navigation';
 import { loansAPI, customersAPI } from '@/lib/api';
 import { appToast } from '@/components/ui/sonner';
+import { EmptyState, ErrorState, TableSkeleton } from '@/components/ui/async-state';
 import {
     IconUpload, IconDownload, IconPlus, IconTrash,
     IconWhatsapp, IconScale, IconEdit
@@ -45,6 +46,7 @@ const LoansPage = () => {
     );
     const [loans, setLoans] = useState<any[]>(() => initialCache?.loans || []);
     const [loading, setLoading] = useState(!initialCache);
+    const [loadError, setLoadError] = useState('');
     const [filters, setFilters] = useState({
         search: '',
         status: '',
@@ -93,6 +95,7 @@ const LoansPage = () => {
 
     const fetchLoans = useCallback(async (pageOverride?: number, opts: { forceFresh?: boolean } = {}) => {
         const requestId = ++requestIdRef.current;
+        setLoadError('');
         try {
             const requestPage = pageOverride ?? pagination.page;
             const forceFresh = Boolean(opts.forceFresh);
@@ -130,8 +133,18 @@ const LoansPage = () => {
             if (requestPage > 1) {
                 loansAPI.prefetchAll({ ...prefetchParams, page: requestPage - 1 });
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error('Failed to fetch loans:', error);
+            if (loansRef.current.length === 0) {
+                const status = error?.response?.status;
+                if (status === 401) {
+                    setLoadError('انتهت الجلسة. الرجاء تسجيل الدخول من جديد.');
+                } else if (status === 403) {
+                    setLoadError('لا تملك صلاحية الوصول إلى هذه البيانات.');
+                } else {
+                    setLoadError('تعذر تحميل القروض حالياً. تحقق من الاتصال أو أعد المحاولة.');
+                }
+            }
         } finally {
             setLoading(false);
         }
@@ -239,6 +252,17 @@ const LoansPage = () => {
         return items;
     }, [pagination.page, pagination.totalPages]);
 
+    const hasFiltersApplied = useMemo(
+        () => Boolean(
+            String(filters.search || '').trim()
+            || filters.status
+            || filters.startDate
+            || filters.endDate
+            || filters.delayed
+        ),
+        [filters.delayed, filters.endDate, filters.search, filters.startDate, filters.status]
+    );
+
     return (
         <div className="loans-page-container">
             <MoneyRain isRaining={showMoneyRain} onComplete={() => setShowMoneyRain(false)} />
@@ -314,7 +338,43 @@ const LoansPage = () => {
             </div>
 
             {loading ? (
-                <div className="loading">جاري التحميل...</div>
+                <TableSkeleton rows={8} columns={11} />
+            ) : loadError && loans.length === 0 ? (
+                <ErrorState
+                    title="تعذر تحميل القروض"
+                    description={loadError}
+                    primaryAction={{
+                        label: 'إعادة المحاولة',
+                        onClick: () => {
+                            setLoading(true);
+                            fetchLoans(pagination.page, { forceFresh: true });
+                        },
+                    }}
+                    secondaryAction={{
+                        label: 'الإدخال السريع',
+                        onClick: () => router.push('/dashboard/quick-entry'),
+                    }}
+                />
+            ) : loans.length === 0 ? (
+                <EmptyState
+                    title={hasFiltersApplied ? 'لا توجد نتائج مطابقة' : 'لا توجد قروض مسجلة بعد'}
+                    description={hasFiltersApplied
+                        ? 'جرّب تعديل عوامل التصفية أو البحث لعرض نتائج أخرى.'
+                        : 'ابدأ بإضافة أول قرض أو استورد ملف القروض للانطلاق بسرعة.'}
+                    primaryAction={{
+                        label: 'إضافة قرض جديد',
+                        onClick: () => router.push('/dashboard/loans/new'),
+                    }}
+                    secondaryAction={hasFiltersApplied
+                        ? {
+                            label: 'مسح الفلاتر',
+                            onClick: () => setFilters({ search: '', status: '', startDate: '', endDate: '', delayed: false }),
+                        }
+                        : {
+                            label: 'استيراد قروض',
+                            onClick: () => setShowImportModal(true),
+                        }}
+                />
             ) : (
                 <>
                     <div className="loans-table-container">
@@ -335,14 +395,7 @@ const LoansPage = () => {
                                 </tr>
                             </thead>
                             <tbody>
-                                {loans.length === 0 ? (
-                                    <tr>
-                                        <td colSpan={11} className="empty-state">
-                                            لا توجد قروض مسجلة
-                                        </td>
-                                    </tr>
-                                ) : (
-                                    loans.map(loan => (
+                                {loans.map(loan => (
                                         <tr
                                             key={loan.id}
                                             className={(() => {
@@ -462,8 +515,7 @@ const LoansPage = () => {
                                                 );
                                             })()}
                                         </tr>
-                                    ))
-                                )}
+                                    ))}
                             </tbody>
                         </table>
                     </div>
