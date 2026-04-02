@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { toast } from 'sonner';
+import { appToast } from '@/components/ui/sonner';
 import { customersAPI, loansAPI, reportsAPI } from '@/lib/api';
 import {
   IconAnalytics,
@@ -13,9 +13,12 @@ import {
   IconLogout,
   IconLoans,
   IconMessageCircle,
+  IconPlus,
   IconScale,
   IconSettings,
   IconStar,
+  IconStore,
+  IconUser,
   IconUsers,
 } from './icons';
 import AnimatedBackground from './AnimatedBackground';
@@ -104,6 +107,10 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
     const current = findNavMatch(pathname);
     return current?.label || 'لوحة التحكم';
   }, [pathname]);
+  const merchantInitial = useMemo(() => {
+    const source = String(merchant.store_name || merchant.email || 'م').trim();
+    return source ? source.charAt(0).toUpperCase() : 'م';
+  }, [merchant.email, merchant.store_name]);
 
   const hasPageAccess = useCallback((path: string) => {
     if (!currentUser.role || currentUser.role === 'merchant') return true;
@@ -165,7 +172,7 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
     if (typeof window === 'undefined') return;
     const token = localStorage.getItem('token');
     if (!token && pathname !== '/login') {
-      toast.error('انتهت الجلسة، الرجاء تسجيل الدخول مجدداً.');
+      appToast.error('انتهت الجلسة، الرجاء تسجيل الدخول مجدداً.');
       router.replace('/login');
     }
   }, [pathname, router]);
@@ -241,7 +248,7 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
         const dashboardData = (maybeData || {}) as { metrics?: { overdueCustomers?: number } };
         const overdueCount = Number(dashboardData.metrics?.overdueCustomers || 0);
         if (overdueCount > 0) {
-          toast.warning(`تنبيه نهاية الشهر: لديك ${overdueCount.toLocaleString('en-US')} عميل متأخر عن السداد.`);
+          appToast.warning(`تنبيه نهاية الشهر: لديك ${overdueCount.toLocaleString('en-US')} عميل متأخر عن السداد.`);
           localStorage.setItem(key, '1');
         }
       } catch {
@@ -272,24 +279,65 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
           </div>
 
           <div className="topbar-actions">
-            {showQuickEntryShortcut && (
+            <div className="topbar-cta-group">
+              {hasPageAccess('/dashboard/loans/new') && (
+                <Link
+                  href="/dashboard/loans/new"
+                  className="topbar-cta topbar-cta-primary"
+                  aria-label="إضافة قرض جديد"
+                >
+                  <IconPlus size={14} />
+                  <span>إضافة قرض</span>
+                </Link>
+              )}
               <Link
-                href="/dashboard/quick-entry"
-                className={`quick-entry-mini ${quickEntryExpanded ? 'expanded' : ''}`}
-                onClick={handleQuickEntryShortcutClick}
-                onBlur={() => setQuickEntryExpanded(false)}
-                aria-label="الإدخال السريع"
-                aria-expanded={quickEntryExpanded}
-                title={quickEntryExpanded ? 'فتح الإدخال السريع' : 'إدخال سريع'}
+                href="/plans"
+                className="topbar-cta topbar-cta-secondary"
+                aria-label="جرب الآن مجاناً"
               >
-                <IconMessageCircle size={15} />
-                <span>{quickEntryExpanded ? 'فتح الإدخال السريع' : 'إدخال سريع'}</span>
+                <IconStore size={14} />
+                <span>جرب الآن مجاناً</span>
               </Link>
-            )}
+              {showQuickEntryShortcut && (
+                <Link
+                  href="/dashboard/quick-entry"
+                  className={`quick-entry-mini ${quickEntryExpanded ? 'expanded' : ''}`}
+                  onClick={handleQuickEntryShortcutClick}
+                  onBlur={() => setQuickEntryExpanded(false)}
+                  aria-label="الإدخال السريع"
+                  aria-expanded={quickEntryExpanded}
+                  title={quickEntryExpanded ? 'فتح الإدخال السريع' : 'إدخال سريع'}
+                >
+                  <IconMessageCircle size={15} />
+                  <span>{quickEntryExpanded ? 'فتح الإدخال السريع' : 'إدخال سريع'}</span>
+                </Link>
+              )}
+            </div>
             <label className="command-box" aria-label="بحث سريع">
               <input placeholder="ابحث عن عميل، قرض، أو أمر..." />
               <kbd>⌘K</kbd>
             </label>
+            <div className="topbar-user-tools">
+              <button
+                type="button"
+                className="theme-chip"
+                onClick={() => setDarkMode((prev) => !prev)}
+                aria-label={darkMode ? 'تفعيل الوضع النهاري' : 'تفعيل الوضع الليلي'}
+                title={darkMode ? 'وضع نهاري' : 'وضع ليلي'}
+              >
+                {darkMode ? <IconDiamond size={16} /> : <IconStar size={16} />}
+                <span>{darkMode ? 'نهاري' : 'ليلي'}</span>
+              </button>
+              <div
+                className="topbar-avatar"
+                role="img"
+                aria-label={`المستخدم الحالي ${merchant.store_name || merchant.email || 'الحساب'}`}
+                title={merchant.store_name || merchant.email || 'الحساب'}
+              >
+                <span className="topbar-avatar-letter">{merchantInitial}</span>
+                <IconUser size={13} />
+              </div>
+            </div>
           </div>
         </header>
 
@@ -315,17 +363,6 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
               </Link>
             );
           })}
-
-          <button
-            type="button"
-            className="dock-item dock-action"
-            onClick={() => setDarkMode((prev) => !prev)}
-            aria-label={darkMode ? 'تفعيل الوضع النهاري' : 'تفعيل الوضع الليلي'}
-            title={darkMode ? 'وضع نهاري' : 'وضع ليلي'}
-          >
-            <span className="dock-icon">{darkMode ? <IconDiamond size={18} /> : <IconStar size={18} />}</span>
-            <span className="dock-label">{darkMode ? 'نهاري' : 'ليلي'}</span>
-          </button>
 
           <button
             type="button"

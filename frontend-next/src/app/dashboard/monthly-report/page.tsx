@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { toast } from 'sonner';
+import { appToast } from '@/components/ui/sonner';
 import { reportsAPI } from '@/lib/api';
 import {
   IconActivity,
@@ -209,7 +209,7 @@ export default function MonthlyReportPage() {
       const payload: MonthlyReportPayload = response?.data || response;
       setReport(payload);
     } catch {
-      toast.error('تعذر تحميل التقرير الشهري.');
+      appToast.error('تعذر تحميل التقرير الشهري.');
       setReport(null);
     } finally {
       setLoading(false);
@@ -265,9 +265,9 @@ export default function MonthlyReportPage() {
         endDate,
         fileName: `monthly-report-${fileStamp}.xlsx`,
       });
-      toast.success('تم تنزيل ملف Excel بنجاح.');
+      appToast.success('تم تنزيل ملف Excel بنجاح.');
     } catch {
-      toast.error('تعذر تصدير ملف Excel حالياً.');
+      appToast.error('تعذر تصدير ملف Excel حالياً.');
     } finally {
       setExporting(null);
     }
@@ -275,7 +275,7 @@ export default function MonthlyReportPage() {
 
   const handleExportCsv = () => {
     if (!report) {
-      toast.error('لا توجد بيانات للتصدير.');
+      appToast.error('لا توجد بيانات للتصدير.');
       return;
     }
     setExporting('csv');
@@ -352,9 +352,9 @@ export default function MonthlyReportPage() {
 
       const csv = rows.map((row) => row.map(toCsvCell).join(',')).join('\n');
       downloadTextFile(csv, `monthly-report-${fileStamp}.csv`, 'text/csv;charset=utf-8;', true);
-      toast.success('تم تنزيل ملف CSV بنجاح.');
+      appToast.success('تم تنزيل ملف CSV بنجاح.');
     } catch {
-      toast.error('تعذر تصدير ملف CSV حالياً.');
+      appToast.error('تعذر تصدير ملف CSV حالياً.');
     } finally {
       setExporting(null);
     }
@@ -362,7 +362,7 @@ export default function MonthlyReportPage() {
 
   const handleExportJson = () => {
     if (!report) {
-      toast.error('لا توجد بيانات للتصدير.');
+      appToast.error('لا توجد بيانات للتصدير.');
       return;
     }
     setExporting('json');
@@ -377,9 +377,9 @@ export default function MonthlyReportPage() {
         `monthly-report-${fileStamp}.json`,
         'application/json;charset=utf-8;'
       );
-      toast.success('تم تنزيل ملف JSON بنجاح.');
+      appToast.success('تم تنزيل ملف JSON بنجاح.');
     } catch {
-      toast.error('تعذر تصدير ملف JSON حالياً.');
+      appToast.error('تعذر تصدير ملف JSON حالياً.');
     } finally {
       setExporting(null);
     }
@@ -389,9 +389,9 @@ export default function MonthlyReportPage() {
     setExporting('yearly');
     try {
       await reportsAPI.exportYearlyWorkbookXlsx(year);
-      toast.success('تم تنزيل ملف Excel السنوي (Sheets شهرية) بنجاح.');
+      appToast.success('تم تنزيل ملف Excel السنوي (Sheets شهرية) بنجاح.');
     } catch {
-      toast.error('تعذر تصدير ملف Excel السنوي حالياً.');
+      appToast.error('تعذر تصدير ملف Excel السنوي حالياً.');
     } finally {
       setExporting(null);
     }

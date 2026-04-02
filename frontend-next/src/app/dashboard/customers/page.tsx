@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useDeferredValue, useTransition, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { customersAPI } from '@/lib/api';
-import { toast } from 'sonner';
+import { appToast } from '@/components/ui/sonner';
 import { IconWhatsapp, IconScale, IconEdit } from '@/components/layout/icons';
 import { useDataSync } from '@/hooks/useDataSync';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -147,7 +147,7 @@ export default function CustomersPage() {
                     setTotalPages(latestCached?.pagination?.totalPages ?? 1);
                     setErrorMsg('');
                     loadCustomerStats(fallbackList);
-                    toast.warning('تعذر تحديث القائمة الآن، تم عرض آخر بيانات محفوظة.');
+                    appToast.warning('تعذر تحديث القائمة الآن، تم عرض آخر بيانات محفوظة.');
                     return;
                 }
             }
@@ -163,14 +163,14 @@ export default function CustomersPage() {
             } else if (status >= 500) {
                 if (hasExisting) {
                     setErrorMsg('');
-                    toast.warning('تعذر تحديث القائمة الآن، تم عرض آخر بيانات محفوظة.');
+                    appToast.warning('تعذر تحديث القائمة الآن، تم عرض آخر بيانات محفوظة.');
                 } else {
                     setErrorMsg('خطأ في الخادم. حاول مرة أخرى بعد قليل.');
                 }
             } else {
                 if (hasExisting) {
                     setErrorMsg('');
-                    toast.warning('تعذر الاتصال بالخادم الآن، تم عرض آخر بيانات محفوظة.');
+                    appToast.warning('تعذر الاتصال بالخادم الآن، تم عرض آخر بيانات محفوظة.');
                 } else {
                     setErrorMsg('تعذر الاتصال بالخادم. تحقق من إعدادات الـ API أو أعد المحاولة.');
                 }
@@ -235,7 +235,7 @@ export default function CustomersPage() {
                         setShowAdd(false);
                         await fetchCustomers(1, { forceFresh: true });
                         scheduleRefresh(200, true);
-                        toast.success('تم إضافة العميل وتحديث القائمة');
+                        appToast.success('تم إضافة العميل وتحديث القائمة');
                     }}
                 />
             )}
@@ -257,7 +257,7 @@ export default function CustomersPage() {
                             )));
                         }
                         scheduleRefresh(200, true);
-                        toast.success('تم تحديث بيانات العميل');
+                        appToast.success('تم تحديث بيانات العميل');
                     }}
                 />
             )}
@@ -269,7 +269,7 @@ export default function CustomersPage() {
                     onSaved={async () => {
                         setRatingCustomer(null);
                         await fetchCustomers(undefined, { forceFresh: true });
-                        toast.success('تم حفظ التقييم بنجاح');
+                        appToast.success('تم حفظ التقييم بنجاح');
                     }}
                 />
             )}

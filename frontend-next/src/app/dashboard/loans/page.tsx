@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useDeferredValue, useTransition, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { loansAPI, customersAPI } from '@/lib/api';
-import { toast } from 'sonner';
+import { appToast } from '@/components/ui/sonner';
 import {
     IconUpload, IconDownload, IconPlus, IconTrash,
     IconWhatsapp, IconScale, IconEdit
@@ -180,7 +180,7 @@ const LoansPage = () => {
                 return;
             } catch (fallbackError: any) {
                 setLoans(previous);
-                toast.error(
+                appToast.error(
                     fallbackError?.response?.data?.error ||
                     error?.response?.data?.error ||
                     fallbackError?.message ||
@@ -202,10 +202,10 @@ const LoansPage = () => {
         try {
             await loansAPI.delete(deleteLoanId);
             scheduleRefresh(200, true);
-            toast.success('تم حذف القرض');
+            appToast.success('تم حذف القرض');
         } catch (error: any) {
             setLoans(previous);
-            toast.error(error?.response?.data?.error || 'فشل حذف القرض');
+            appToast.error(error?.response?.data?.error || 'فشل حذف القرض');
         } finally {
             setDeleteLoanId(null);
         }
@@ -215,7 +215,7 @@ const LoansPage = () => {
         try {
             await loansAPI.export(filters);
         } catch (error: any) {
-            toast.error(error?.response?.data?.error || 'فشل تصدير البيانات');
+            appToast.error(error?.response?.data?.error || 'فشل تصدير البيانات');
         }
     };
 
@@ -511,13 +511,13 @@ const LoansPage = () => {
                     )));
                 }
                 scheduleRefresh(700, true);
-                toast.success('تم تحديث بيانات القرض');
+                appToast.success('تم تحديث بيانات القرض');
             }} />}
             {showImportModal && <ImportLoansModal onClose={() => setShowImportModal(false)} onSuccess={async () => {
                 setShowImportModal(false);
                 setShowMoneyRain(true);
                 await fetchLoans(1);
-                toast.success('تم استيراد القروض وتحديث القائمة');
+                appToast.success('تم استيراد القروض وتحديث القائمة');
             }} />}
 
             {deleteLoanId && (
@@ -647,7 +647,7 @@ const AddLoanModal = ({ onClose, onSuccess }: any) => {
             await loansAPI.create(payload);
             onSuccess();
         } catch (error: any) {
-            toast.error(error?.response?.data?.error || 'فشل إضافة القرض');
+            appToast.error(error?.response?.data?.error || 'فشل إضافة القرض');
         } finally {
             setLoading(false);
         }
@@ -762,7 +762,7 @@ const EditLoanModal = ({ loan, onClose, onSuccess }: any) => {
             };
             onSuccess(updatedLoan);
         } catch (error: any) {
-            toast.error(error?.response?.data?.error || 'فشل تعديل القرض');
+            appToast.error(error?.response?.data?.error || 'فشل تعديل القرض');
         } finally {
             setLoading(false);
         }

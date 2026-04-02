@@ -12,7 +12,7 @@ export default function TermsPage() {
         <section className="mt-10 space-y-6 text-slate-700">
           <div>
             <h2 className="text-xl font-semibold text-slate-900">1) التعريفات</h2>
-            <p>تشير "المنصة" إلى نظام أصيل المالي، وتشير "الجهة المالكة" إلى مقدم الخدمة، وتشير "المستخدم" إلى كل من ينشئ حسابا أو يستخدم الخدمات.</p>
+            <p>تشير &quot;المنصة&quot; إلى نظام أصيل المالي، وتشير &quot;الجهة المالكة&quot; إلى مقدم الخدمة، وتشير &quot;المستخدم&quot; إلى كل من ينشئ حسابا أو يستخدم الخدمات.</p>
           </div>
           <div>
             <h2 className="text-xl font-semibold text-slate-900">2) نطاق الاستخدام</h2>
@@ -28,7 +28,7 @@ export default function TermsPage() {
           </div>
           <div>
             <h2 className="text-xl font-semibold text-slate-900">5) حدود المسؤولية</h2>
-            <p>تُقدّم المنصة "كما هي". لا تتحمل الجهة المالكة مسؤولية أي أضرار غير مباشرة أو خسائر ناتجة عن سوء استخدام النظام أو عن أعطال خارج نطاق السيطرة.</p>
+            <p>تُقدّم المنصة &quot;كما هي&quot;. لا تتحمل الجهة المالكة مسؤولية أي أضرار غير مباشرة أو خسائر ناتجة عن سوء استخدام النظام أو عن أعطال خارج نطاق السيطرة.</p>
           </div>
           <div>
             <h2 className="text-xl font-semibold text-slate-900">6) الملكية الفكرية</h2>
