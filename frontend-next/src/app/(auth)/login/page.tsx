@@ -3,6 +3,8 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
+import { Button, Input } from '@/shared/ui';
+import { designTokens } from '@/tokens/design-tokens';
 
 export default function LoginPage() {
     const { login, isLoggingIn } = useAuth();
@@ -26,7 +28,7 @@ export default function LoginPage() {
     };
 
     return (
-        <section className="glass-card auth-card">
+        <section className="glass-card auth-card" style={{ borderRadius: designTokens.radius.xl }}>
             {/* Logo placeholder if needed */}
             <h1 className="text-4xl font-black text-slate-900 mb-2 tracking-tight dark:text-slate-50">مرحباً بعودتك</h1>
             <p className="text-slate-700 mb-8 font-semibold dark:text-slate-200">سجل دخولك للمتابعة</p>
@@ -39,7 +41,7 @@ export default function LoginPage() {
             <form onSubmit={handleSubmit} className="w-full space-y-6" noValidate>
                 <div className="space-y-2">
                     <label htmlFor="identifier" className="text-sm font-bold text-slate-800 mr-2 dark:text-slate-100">البريد الإلكتروني أو اسم المستخدم</label>
-                    <input
+                    <Input
                         id="identifier"
                         name="identifier"
                         type="text"
@@ -47,6 +49,8 @@ export default function LoginPage() {
                         required
                         autoComplete="username"
                         className="field-control"
+                        variant="auth"
+                        inputSize="lg"
                         onChange={handleTextChange}
                         disabled={isLoggingIn}
                     />
@@ -55,7 +59,7 @@ export default function LoginPage() {
                     <div className="flex items-center justify-between px-2">
                         <label htmlFor="password" className="text-sm font-bold text-slate-800 dark:text-slate-100">كلمة المرور</label>
                     </div>
-                    <input
+                    <Input
                         id="password"
                         name="password"
                         type="password"
@@ -63,6 +67,8 @@ export default function LoginPage() {
                         required
                         autoComplete="current-password"
                         className="field-control"
+                        variant="auth"
+                        inputSize="lg"
                         onChange={handleTextChange}
                         disabled={isLoggingIn}
                     />
@@ -82,14 +88,17 @@ export default function LoginPage() {
                     </label>
                 </div>
 
-                <button
+                <Button
                     type="submit"
-                    className="btn-premium-primary action-btn w-full text-lg justify-center mt-4"
+                    variant="brand"
+                    size="lg"
+                    stretch
+                    className="btn-premium-primary action-btn justify-center mt-4"
                     disabled={isLoggingIn}
                     aria-busy={isLoggingIn}
                 >
                     {isLoggingIn ? 'جاري الدخول...' : 'دخول'}
-                </button>
+                </Button>
             </form>
 
         </section>
