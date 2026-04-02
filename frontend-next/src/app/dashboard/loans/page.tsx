@@ -2,9 +2,11 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useDeferredValue, useTransition, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import type { ColumnDef } from '@tanstack/react-table';
 import { loansAPI, customersAPI } from '@/lib/api';
 import { appToast } from '@/components/ui/sonner';
 import { EmptyState, ErrorState, TableSkeleton } from '@/components/ui/async-state';
+import { DataTablePro, type DataTableBulkAction, type DataTableFilterConfig } from '@/components/ui/data-table-pro';
 import {
     IconUpload, IconDownload, IconPlus, IconTrash,
     IconWhatsapp, IconScale, IconEdit
@@ -35,6 +37,38 @@ const buildLoanQueryParams = (filters: any, page: number, limit: number) => {
     if (searchValue) params.skip_count = true;
 
     return params;
+};
+
+const formatRiyal = (value: number) => `${value.toLocaleString('en-US')} ﷼`;
+
+const getLoanComputedValues = (loan: any) => {
+    const principal = parseFloat(loan.principal_amount || loan.amount || 0);
+    const total = parseFloat(loan.amount || 0);
+    const raised = parseFloat(loan.najiz_case_amount || 0);
+    const collected = loan.status === 'Paid'
+        ? parseFloat(loan.najiz_case_amount || loan.najiz_collected_amount || loan.amount || 0)
+        : parseFloat(loan.najiz_collected_amount || 0);
+    const caseTrack = Boolean(loan.is_najiz_case || loan.najiz_case_number);
+    return { principal, total, raised, collected, caseTrack };
+};
+
+const getLoanStatusLabel = (status: string) => (
+    status === 'Active' ? 'نشط' :
+        status === 'Paid' ? 'تم التسديد' :
+            status === 'Raised' ? 'قضايا' :
+                status === 'Cancelled' ? 'ملغي' : status
+);
+
+const getLoanRowStateClass = (loan: any) => {
+    const txDate = loan.transaction_date ? new Date(loan.transaction_date) : new Date();
+    const now = new Date();
+    const txMonthKey = txDate.getFullYear() * 12 + txDate.getMonth();
+    const currentMonthKey = now.getFullYear() * 12 + now.getMonth();
+    const isAfterMonthEnd = txMonthKey < currentMonthKey;
+    if (loan.status === 'Paid') return 'loan-row-paid';
+    if (loan.status === 'Raised') return 'loan-row-raised';
+    if (loan.status === 'Active' && isAfterMonthEnd) return 'loan-row-overdue';
+    return '';
 };
 
 const LoansPage = () => {
@@ -148,7 +182,7 @@ const LoansPage = () => {
         } finally {
             setLoading(false);
         }
-    }, [deferredFilters, pagination.limit, pagination.page]);
+    }, [deferredFilters, loans.length, pagination.limit, pagination.page]);
 
     useEffect(() => {
         fetchLoans();
@@ -163,7 +197,7 @@ const LoansPage = () => {
         scheduleRefresh(200, true);
     }, { scopes: ['loans', 'customers', 'dashboard'], debounceMs: 200 });
 
-    const handleStatusChange = async (loanId: string, newStatus: string) => {
+    const handleStatusChange = useCallback(async (loanId: string, newStatus: string) => {
         const previous = loansRef.current;
         setLoans((prev) => prev.map((loan) => (
             loan.id === loanId ? { ...loan, status: newStatus } : loan
@@ -202,11 +236,11 @@ const LoansPage = () => {
                 );
             }
         }
-    };
+    }, [scheduleRefresh]);
 
-    const handleDelete = (loanId: string) => {
+    const handleDelete = useCallback((loanId: string) => {
         setDeleteLoanId(loanId);
-    };
+    }, []);
 
     const confirmDelete = async () => {
         if (!deleteLoanId) return;
@@ -262,6 +296,295 @@ const LoansPage = () => {
         ),
         [filters.delayed, filters.endDate, filters.search, filters.startDate, filters.status]
     );
+
+    const handleBulkStatusChange = useCallback(async (selectedLoans: any[], newStatus: string) => {
+        const ids = selectedLoans.map((loan) => loan.id).filter(Boolean);
+        if (ids.length === 0) return;
+        const results = await Promise.allSettled(
+            ids.map((id) => loansAPI.updateStatus(id, newStatus))
+        );
+        const successCount = results.filter((result) => result.status === 'fulfilled').length;
+        const failedCount = ids.length - successCount;
+
+        if (successCount > 0) {
+            if (newStatus === 'Paid') setShowMoneyRain(true);
+            scheduleRefresh(200, true);
+            appToast.success(`تم تحديث ${successCount} قرض`);
+        }
+        if (failedCount > 0) {
+            appToast.warning(`تعذر تحديث ${failedCount} قرض`);
+        }
+    }, [scheduleRefresh]);
+
+    const handleBulkDelete = useCallback(async (selectedLoans: any[]) => {
+        const ids = selectedLoans.map((loan) => loan.id).filter(Boolean);
+        if (ids.length === 0) return;
+        const confirmed = window.confirm(`سيتم حذف ${ids.length} قرض. هل تريد المتابعة؟`);
+        if (!confirmed) return;
+
+        const results = await Promise.allSettled(ids.map((id) => loansAPI.delete(id)));
+        const successCount = results.filter((result) => result.status === 'fulfilled').length;
+        const failedCount = ids.length - successCount;
+
+        if (successCount > 0) {
+            scheduleRefresh(200, true);
+            appToast.success(`تم حذف ${successCount} قرض`);
+        }
+        if (failedCount > 0) {
+            appToast.warning(`تعذر حذف ${failedCount} قرض`);
+        }
+    }, [scheduleRefresh]);
+
+    const loanColumns = useMemo<ColumnDef<any>[]>(() => ([
+        {
+            accessorKey: 'customer_name',
+            header: 'اسم العميل',
+            cell: ({ row }) => (
+                <div className="customer-name-cell">
+                    <div className="customer-main">{row.original.customer_name}</div>
+                    <div className="customer-sub">عميل</div>
+                </div>
+            )
+        },
+        {
+            accessorKey: 'national_id',
+            header: 'رقم الهوية',
+            cell: ({ row }) => <span className="id-cell">{row.original.national_id || '-'}</span>
+        },
+        {
+            id: 'principal_amount',
+            accessorFn: (loan) => getLoanComputedValues(loan).principal,
+            header: 'المبلغ الأساسي',
+            cell: ({ row }) => <span className="amount amount-cell">{formatRiyal(getLoanComputedValues(row.original).principal)}</span>
+        },
+        {
+            id: 'total_amount',
+            accessorFn: (loan) => getLoanComputedValues(loan).total,
+            header: 'المبلغ النهائي',
+            cell: ({ row }) => <span className="amount amount-cell">{formatRiyal(getLoanComputedValues(row.original).total)}</span>
+        },
+        {
+            id: 'raised_amount',
+            accessorFn: (loan) => getLoanComputedValues(loan).raised,
+            header: 'المبلغ المرفوع',
+            cell: ({ row }) => {
+                const value = getLoanComputedValues(row.original).raised;
+                return <span className="amount amount-cell">{value > 0 ? formatRiyal(value) : '—'}</span>;
+            }
+        },
+        {
+            id: 'collected_amount',
+            accessorFn: (loan) => getLoanComputedValues(loan).collected,
+            header: 'المبلغ المحصل',
+            cell: ({ row }) => {
+                const value = getLoanComputedValues(row.original).collected;
+                return <span className="amount amount-cell">{value > 0 ? formatRiyal(value) : '—'}</span>;
+            }
+        },
+        {
+            id: 'case_track',
+            accessorFn: (loan) => getLoanComputedValues(loan).caseTrack ? 'case' : 'normal',
+            header: 'المسار',
+            cell: ({ row }) => {
+                const inCaseTrack = getLoanComputedValues(row.original).caseTrack;
+                return (
+                    <span className={`status-badge status-track ${inCaseTrack ? 'status-overdue' : 'status-cancelled'}`}>
+                        {inCaseTrack ? (row.original.status === 'Paid' ? 'كان بالقضايا' : 'بالقضايا') : 'عادي'}
+                    </span>
+                );
+            }
+        },
+        {
+            accessorKey: 'receipt_number',
+            header: 'رقم السند',
+            cell: ({ row }) => <span className="receipt-cell">{row.original.receipt_number || '-'}</span>
+        },
+        {
+            accessorKey: 'status',
+            header: 'الحالة',
+            cell: ({ row }) => (
+                <span className={`status-badge status-flat status-${String(row.original.status || '').toLowerCase()}`}>
+                    {getLoanStatusLabel(row.original.status)}
+                </span>
+            )
+        },
+        {
+            id: 'transaction_date',
+            accessorFn: (loan) => new Date(loan.transaction_date || 0).getTime(),
+            header: 'تاريخ المعاملة',
+            cell: ({ row }) => (
+                <span className="date-cell">
+                    {row.original.transaction_date
+                        ? new Date(row.original.transaction_date).toLocaleDateString('ar-SA')
+                        : '—'}
+                </span>
+            )
+        },
+        {
+            id: 'actions',
+            header: 'الإجراءات',
+            enableSorting: false,
+            cell: ({ row }) => (
+                <div className="actions-wrap">
+                    <div className="actions-block-title">إجراءات عامة</div>
+                    <div className="icon-actions">
+                        <button
+                            className="btn-action btn-edit"
+                            onClick={() => setEditingLoan(row.original)}
+                            title="تعديل بيانات القرض"
+                        >
+                            <IconEdit size={15} />
+                            <span>تعديل</span>
+                        </button>
+
+                        {row.original.whatsappLink && (
+                            <a
+                                href={row.original.whatsappLink}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="btn-action btn-whatsapp"
+                                title="تواصل واتساب مباشر"
+                            >
+                                <IconWhatsapp size={15} />
+                                <span>واتساب</span>
+                            </a>
+                        )}
+
+                        {row.original.national_id && (
+                            <a
+                                href="https://najiz.sa"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="btn-action btn-najiz"
+                                title="ناجز"
+                            >
+                                <IconScale size={15} />
+                                <span>ناجز</span>
+                            </a>
+                        )}
+
+                        <button
+                            className="btn-action btn-delete"
+                            onClick={() => handleDelete(row.original.id)}
+                            title="حذف"
+                        >
+                            <IconTrash size={15} />
+                            <span>حذف</span>
+                        </button>
+                    </div>
+                    <div className="actions-block-title">تغيير الحالة</div>
+                    <div className="state-actions">
+                        <button
+                            className="btn-action-label btn-raised"
+                            onClick={() => handleStatusChange(row.original.id, 'Raised')}
+                            disabled={row.original.status === 'Raised'}
+                        >
+                            تحويل إلى قضايا
+                        </button>
+                        <button
+                            className="btn-action-label btn-paid"
+                            onClick={() => handleStatusChange(row.original.id, 'Paid')}
+                            disabled={row.original.status === 'Paid'}
+                        >
+                            تحويل إلى تم التسديد
+                        </button>
+                    </div>
+                </div>
+            )
+        }
+    ]), [handleDelete, handleStatusChange]);
+
+    const loanFilters = useMemo<DataTableFilterConfig[]>(() => ([
+        {
+            columnId: 'status',
+            label: 'الحالة',
+            placeholder: 'كل الحالات',
+            options: [
+                { label: 'نشط', value: 'Active' },
+                { label: 'تم التسديد', value: 'Paid' },
+                { label: 'قضايا', value: 'Raised' },
+                { label: 'ملغي', value: 'Cancelled' }
+            ]
+        },
+        {
+            columnId: 'case_track',
+            label: 'المسار',
+            placeholder: 'كل المسارات',
+            options: [
+                { label: 'بالقضايا', value: 'case' },
+                { label: 'عادي', value: 'normal' }
+            ]
+        }
+    ]), []);
+
+    const loanBulkActions = useMemo<DataTableBulkAction<any>[]>(() => ([
+        {
+            id: 'bulk-raised',
+            label: 'تحويل المحدد إلى قضايا',
+            onClick: (rows) => handleBulkStatusChange(rows, 'Raised')
+        },
+        {
+            id: 'bulk-paid',
+            label: 'تحويل المحدد إلى تم التسديد',
+            onClick: (rows) => handleBulkStatusChange(rows, 'Paid')
+        },
+        {
+            id: 'bulk-delete',
+            label: 'حذف المحدد',
+            variant: 'danger',
+            onClick: handleBulkDelete
+        }
+    ]), [handleBulkDelete, handleBulkStatusChange]);
+
+    const loanExportMapper = useCallback((loan: any) => {
+        const values = getLoanComputedValues(loan);
+        return {
+            'اسم العميل': loan.customer_name || '',
+            'رقم الهوية': loan.national_id || '',
+            'المبلغ الأساسي': values.principal,
+            'المبلغ النهائي': values.total,
+            'المبلغ المرفوع': values.raised,
+            'المبلغ المحصل': values.collected,
+            'المسار': values.caseTrack ? 'بالقضايا' : 'عادي',
+            'رقم السند': loan.receipt_number || '',
+            'الحالة': getLoanStatusLabel(loan.status),
+            'تاريخ المعاملة': loan.transaction_date ? new Date(loan.transaction_date).toLocaleDateString('ar-SA') : ''
+        };
+    }, []);
+
+    const renderLoanCard = useCallback((loan: any) => {
+        const values = getLoanComputedValues(loan);
+        return (
+            <div className="actions">
+                <div className="customer-main">{loan.customer_name}</div>
+                <div className="customer-sub">{loan.national_id || '-'}</div>
+                <div className="status-badge status-flat" style={{ marginTop: '8px' }}>
+                    {getLoanStatusLabel(loan.status)}
+                </div>
+                <div style={{ display: 'grid', gap: '6px', marginTop: '10px', fontSize: '0.86rem' }}>
+                    <div>المبلغ النهائي: <strong>{formatRiyal(values.total)}</strong></div>
+                    <div>المبلغ المحصل: <strong>{values.collected > 0 ? formatRiyal(values.collected) : '—'}</strong></div>
+                    <div>تاريخ المعاملة: <strong>{loan.transaction_date ? new Date(loan.transaction_date).toLocaleDateString('ar-SA') : '—'}</strong></div>
+                </div>
+                <div className="state-actions" style={{ marginTop: '10px' }}>
+                    <button
+                        className="btn-action-label btn-raised"
+                        onClick={() => handleStatusChange(loan.id, 'Raised')}
+                        disabled={loan.status === 'Raised'}
+                    >
+                        قضايا
+                    </button>
+                    <button
+                        className="btn-action-label btn-paid"
+                        onClick={() => handleStatusChange(loan.id, 'Paid')}
+                        disabled={loan.status === 'Paid'}
+                    >
+                        تم التسديد
+                    </button>
+                </div>
+            </div>
+        );
+    }, [handleStatusChange]);
 
     return (
         <div className="loans-page-container">
@@ -378,146 +701,19 @@ const LoansPage = () => {
             ) : (
                 <>
                     <div className="loans-table-container">
-                        <table className="loans-table">
-                            <thead>
-                                <tr>
-                                    <th>اسم العميل</th>
-                                    <th>رقم الهوية</th>
-                                    <th>المبلغ الأساسي</th>
-                                    <th>المبلغ النهائي</th>
-                                    <th>المبلغ المرفوع عليه</th>
-                                    <th>المبلغ المحصل</th>
-                                    <th>المسار</th>
-                                    <th>رقم السند</th>
-                                    <th>الحالة</th>
-                                    <th>تاريخ المعاملة</th>
-                                    <th>الإجراءات</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {loans.map(loan => (
-                                        <tr
-                                            key={loan.id}
-                                            className={(() => {
-                                                const txDate = loan.transaction_date ? new Date(loan.transaction_date) : new Date();
-                                                const now = new Date();
-                                                const txMonthKey = txDate.getFullYear() * 12 + txDate.getMonth();
-                                                const currentMonthKey = now.getFullYear() * 12 + now.getMonth();
-                                                const isAfterMonthEnd = txMonthKey < currentMonthKey;
-                                                if (loan.status === 'Paid') return 'loan-row-paid';
-                                                if (loan.status === 'Raised') return 'loan-row-raised';
-                                                if (loan.status === 'Active' && isAfterMonthEnd) return 'loan-row-overdue';
-                                                return '';
-                                            })()}
-                                        >
-                                            {(() => {
-                                                const principal = parseFloat(loan.principal_amount || loan.amount || 0);
-                                                const total = parseFloat(loan.amount || 0);
-                                                const raised = parseFloat(loan.najiz_case_amount || 0);
-                                                const collected = loan.status === 'Paid'
-                                                    ? (parseFloat(loan.najiz_case_amount || loan.najiz_collected_amount || loan.amount || 0))
-                                                    : (parseFloat(loan.najiz_collected_amount || 0));
-                                                const caseTrack = loan.is_najiz_case || loan.najiz_case_number;
-                                                return (
-                                                    <>
-                                            <td className="customer-name-cell">
-                                                <div className="customer-main">{loan.customer_name}</div>
-                                                <div className="customer-sub">عميل</div>
-                                            </td>
-                                            <td className="id-cell">{loan.national_id}</td>
-                                            <td className="amount amount-cell">{principal.toLocaleString('en-US')} ﷼</td>
-                                            <td className="amount amount-cell">{total.toLocaleString('en-US')} ﷼</td>
-                                            <td className="amount amount-cell">{raised > 0 ? `${raised.toLocaleString('en-US')} ﷼` : '—'}</td>
-                                            <td className="amount amount-cell">{collected > 0 ? `${collected.toLocaleString('en-US')} ﷼` : '—'}</td>
-                                            <td>
-                                                <span className={`status-badge status-track ${caseTrack ? 'status-overdue' : 'status-cancelled'}`}>
-                                                    {caseTrack ? (loan.status === 'Paid' ? 'كان بالقضايا' : 'بالقضايا') : 'عادي'}
-                                                </span>
-                                            </td>
-                                            <td className="receipt-cell">{loan.receipt_number || '-'}</td>
-                                            <td>
-                                                <span className={`status-badge status-flat status-${loan.status.toLowerCase()}`}>
-                                                    {loan.status === 'Active' ? 'نشط' :
-                                                        loan.status === 'Paid' ? 'تم التسديد' :
-                                                            loan.status === 'Raised' ? 'قضايا' :
-                                                                loan.status === 'Cancelled' ? 'ملغي' : loan.status}
-                                                </span>
-                                            </td>
-                                            <td className="date-cell">{new Date(loan.transaction_date).toLocaleDateString('ar-SA')}</td>
-                                            <td className="actions">
-                                                <div className="actions-wrap">
-                                                    <div className="actions-block-title">إجراءات عامة</div>
-                                                    <div className="icon-actions">
-                                                    <button
-                                                        className="btn-action btn-edit"
-                                                        onClick={() => setEditingLoan(loan)}
-                                                        title="تعديل بيانات القرض"
-                                                    >
-                                                        <IconEdit size={15} />
-                                                        <span>تعديل</span>
-                                                    </button>
-
-                                                    {loan.whatsappLink && (
-                                                        <a
-                                                            href={loan.whatsappLink}
-                                                            target="_blank"
-                                                            rel="noopener noreferrer"
-                                                            className="btn-action btn-whatsapp"
-                                                            title="تواصل واتساب مباشر"
-                                                        >
-                                                            <IconWhatsapp size={15} />
-                                                            <span>واتساب</span>
-                                                        </a>
-                                                    )}
-
-                                                    {loan.national_id && (
-                                                        <a
-                                                            href="https://najiz.sa"
-                                                            target="_blank"
-                                                            rel="noopener noreferrer"
-                                                            className="btn-action btn-najiz"
-                                                            title="ناجز"
-                                                        >
-                                                            <IconScale size={15} />
-                                                            <span>ناجز</span>
-                                                        </a>
-                                                    )}
-
-                                                    <button
-                                                        className="btn-action btn-delete"
-                                                        onClick={() => handleDelete(loan.id)}
-                                                        title="حذف"
-                                                    >
-                                                        <IconTrash size={15} />
-                                                        <span>حذف</span>
-                                                    </button>
-                                                    </div>
-                                                    <div className="actions-block-title">تغيير الحالة</div>
-                                                    <div className="state-actions">
-                                                        <button
-                                                            className="btn-action-label btn-raised"
-                                                            onClick={() => handleStatusChange(loan.id, 'Raised')}
-                                                            disabled={loan.status === 'Raised'}
-                                                        >
-                                                            تحويل إلى قضايا
-                                                        </button>
-                                                        <button
-                                                            className="btn-action-label btn-paid"
-                                                            onClick={() => handleStatusChange(loan.id, 'Paid')}
-                                                            disabled={loan.status === 'Paid'}
-                                                        >
-                                                            تحويل إلى تم التسديد
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            </td>
-                                                    </>
-                                                );
-                                            })()}
-                                        </tr>
-                                    ))}
-                            </tbody>
-                        </table>
+                        <DataTablePro
+                            data={loans}
+                            columns={loanColumns}
+                            filters={loanFilters}
+                            bulkActions={loanBulkActions}
+                            searchPlaceholder="بحث سريع داخل النتائج المعروضة..."
+                            emptyLabel="لا توجد نتائج مطابقة في الجدول."
+                            exportFilePrefix="loans-table"
+                            exportMapper={loanExportMapper}
+                            rowClassName={getLoanRowStateClass}
+                            mobileCardRenderer={(loan) => renderLoanCard(loan)}
+                            enableClientPagination={false}
+                        />
                     </div>
 
                     {pagination.totalPages > 1 && (

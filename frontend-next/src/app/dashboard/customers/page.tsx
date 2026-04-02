@@ -2,13 +2,55 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useDeferredValue, useTransition, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import type { ColumnDef } from '@tanstack/react-table';
 import { customersAPI } from '@/lib/api';
 import { appToast } from '@/components/ui/sonner';
 import { EmptyState, ErrorState, TableSkeleton } from '@/components/ui/async-state';
+import { DataTablePro, type DataTableBulkAction, type DataTableFilterConfig } from '@/components/ui/data-table-pro';
 import { IconWhatsapp, IconScale, IconEdit } from '@/components/layout/icons';
 import { useDataSync } from '@/hooks/useDataSync';
 import { useDebounce } from '@/hooks/useDebounce';
 import './customers.css';
+
+const getCustomerStatus = (customer: any) => {
+    if (customer.stats_pending) return 'pending';
+    return String(customer.customer_status || '').toLowerCase();
+};
+
+const getCustomerStatusLabel = (status: string) => (
+    status === 'paid' ? 'تم السداد' :
+        status === 'raised' ? 'قضايا' :
+            status === 'unpaid' ? 'لم يسدد' :
+                status === 'new' ? 'جديد' :
+                    status === 'pending' ? 'جارٍ التحديث' : 'غير معروف'
+);
+
+const getCustomerStatusClass = (status: string) => (
+    status === 'paid'
+        ? 'row-state-paid'
+        : status === 'raised'
+            ? 'row-state-raised'
+            : status === 'unpaid'
+                ? 'row-state-unpaid'
+                : ''
+);
+
+const getCustomerBadgeClass = (status: string) => (
+    status === 'paid'
+        ? 'badge badge-success'
+        : status === 'raised'
+            ? 'badge badge-danger'
+            : status === 'unpaid'
+                ? 'badge badge-warn'
+                : 'badge badge-neutral'
+);
+
+const getNormalizedRating = (customer: any) => {
+    if (customer.stats_pending) return null;
+    const raw = customer.rating;
+    if (raw === null || raw === undefined || Number.isNaN(Number(raw))) return null;
+    return Math.max(0, Math.min(10, Number(raw)));
+};
 
 export default function CustomersPage() {
     const router = useRouter();
@@ -229,6 +271,198 @@ export default function CustomersPage() {
 
     const hasSearchValue = Boolean(String(search || '').trim());
 
+    const handleBulkCopyMobiles = useCallback(async (selectedCustomers: any[]) => {
+        const mobiles = selectedCustomers
+            .map((customer) => String(customer.mobile_number || '').trim())
+            .filter(Boolean);
+        if (mobiles.length === 0) {
+            appToast.warning('لا توجد أرقام جوال في السجلات المحددة');
+            return;
+        }
+        const payload = mobiles.join('\n');
+        try {
+            await navigator.clipboard.writeText(payload);
+            appToast.success(`تم نسخ ${mobiles.length} رقم جوال`);
+        } catch {
+            const textarea = document.createElement('textarea');
+            textarea.value = payload;
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textarea);
+            appToast.success(`تم نسخ ${mobiles.length} رقم جوال`);
+        }
+    }, []);
+
+    const customerColumns = useMemo<ColumnDef<any>[]>(() => ([
+        {
+            id: 'serial',
+            header: '#',
+            enableSorting: false,
+            cell: ({ row }) => <span className="td-num">{(page - 1) * 15 + row.index + 1}</span>
+        },
+        {
+            accessorKey: 'full_name',
+            header: 'الاسم',
+            cell: ({ row }) => (
+                <div className="customer-cell">
+                    <div className="customer-avatar" style={{ background: `hsl(${(row.original.full_name?.charCodeAt(0) || 0) * 40},60%,55%)` }}>
+                        {(row.original.full_name || '؟')[0]}
+                    </div>
+                    <span className="customer-name">{row.original.full_name}</span>
+                </div>
+            )
+        },
+        {
+            accessorKey: 'national_id',
+            header: 'رقم الهوية',
+            cell: ({ row }) => <span className="td-mono">{row.original.national_id || '—'}</span>
+        },
+        {
+            accessorKey: 'mobile_number',
+            header: 'الجوال',
+            cell: ({ row }) => <span className="td-mono">{row.original.mobile_number || '—'}</span>
+        },
+        {
+            id: 'rating',
+            accessorFn: (customer) => getNormalizedRating(customer) ?? -1,
+            header: 'التقييم',
+            cell: ({ row }) => {
+                const rating = getNormalizedRating(row.original);
+                if (row.original.stats_pending) return <span className="muted">—</span>;
+                if (rating === null) return <span className="muted">لم يتم التقييم</span>;
+                return (
+                    <div className="rating-wrap">
+                        <div className="rating-bar">
+                            <div className="rating-fill" style={{ width: `${rating * 10}%` }} />
+                        </div>
+                        <span className="rating-value">{rating.toFixed(1)}/10</span>
+                    </div>
+                );
+            }
+        },
+        {
+            id: 'total_debt',
+            accessorFn: (customer) => parseFloat(customer.total_debt || 0),
+            header: 'إجمالي الدين',
+            cell: ({ row }) => {
+                const debt = parseFloat(row.original.total_debt || 0);
+                return (
+                    <span className={`td-amount ${debt > 0 ? 'amount-debt' : 'amount-zero'}`}>
+                        {row.original.stats_pending ? '—' : (debt > 0 ? `${debt.toLocaleString('en-US')} ﷼` : 'لا دين')}
+                    </span>
+                );
+            }
+        },
+        {
+            id: 'customer_status',
+            accessorFn: (customer) => getCustomerStatus(customer),
+            header: 'الحالة',
+            cell: ({ row }) => {
+                const status = getCustomerStatus(row.original);
+                return (
+                    <span className={getCustomerBadgeClass(status)}>
+                        {getCustomerStatusLabel(status)}
+                    </span>
+                );
+            }
+        },
+        {
+            id: 'actions',
+            header: 'الإجراءات',
+            enableSorting: false,
+            cell: ({ row }) => (
+                <div className="action-btns">
+                    <button
+                        className="btn-action-icon"
+                        onClick={() => setEditingCustomer(row.original)}
+                        title="تعديل بيانات العميل"
+                        aria-label="تعديل بيانات العميل"
+                    >
+                        <IconEdit size={16} />
+                    </button>
+                    <button
+                        className="btn-action-icon"
+                        onClick={() => setRatingCustomer(row.original)}
+                        title="تقييم العميل"
+                        aria-label="تقييم العميل"
+                    >
+                        ★
+                    </button>
+                    {row.original.whatsappLink && (
+                        <a href={row.original.whatsappLink} target="_blank" rel="noopener noreferrer" className="btn-action-icon btn-whatsapp-icon" title="واتساب" aria-label="فتح واتساب">
+                            <IconWhatsapp size={16} />
+                        </a>
+                    )}
+                    {row.original.national_id && (
+                        <a href="https://najiz.sa" target="_blank" rel="noopener noreferrer" className="btn-action-icon btn-najiz-icon" title="ناجز" aria-label="فتح منصة ناجز">
+                            <IconScale size={16} />
+                        </a>
+                    )}
+                </div>
+            )
+        }
+    ]), [page]);
+
+    const customerFilters = useMemo<DataTableFilterConfig[]>(() => ([
+        {
+            columnId: 'customer_status',
+            label: 'الحالة',
+            placeholder: 'كل الحالات',
+            options: [
+                { label: 'تم السداد', value: 'paid' },
+                { label: 'قضايا', value: 'raised' },
+                { label: 'لم يسدد', value: 'unpaid' },
+                { label: 'جديد', value: 'new' },
+                { label: 'جارٍ التحديث', value: 'pending' }
+            ]
+        }
+    ]), []);
+
+    const customerBulkActions = useMemo<DataTableBulkAction<any>[]>(() => ([
+        {
+            id: 'copy-mobiles',
+            label: 'نسخ أرقام الجوال',
+            onClick: handleBulkCopyMobiles
+        }
+    ]), [handleBulkCopyMobiles]);
+
+    const customerExportMapper = useCallback((customer: any) => {
+        const debt = parseFloat(customer.total_debt || 0);
+        return {
+            'الاسم': customer.full_name || '',
+            'رقم الهوية': customer.national_id || '',
+            'الجوال': customer.mobile_number || '',
+            'التقييم': getNormalizedRating(customer) ?? '',
+            'إجمالي الدين': debt,
+            'الحالة': getCustomerStatusLabel(getCustomerStatus(customer))
+        };
+    }, []);
+
+    const renderCustomerCard = useCallback((customer: any) => {
+        const debt = parseFloat(customer.total_debt || 0);
+        const status = getCustomerStatus(customer);
+        const rating = getNormalizedRating(customer);
+        return (
+            <div>
+                <div className="customer-cell">
+                    <div className="customer-avatar" style={{ background: `hsl(${(customer.full_name?.charCodeAt(0) || 0) * 40},60%,55%)` }}>
+                        {(customer.full_name || '؟')[0]}
+                    </div>
+                    <span className="customer-name">{customer.full_name}</span>
+                </div>
+                <div style={{ display: 'grid', gap: '6px', marginTop: '10px', fontSize: '0.86rem' }}>
+                    <div>الجوال: <strong>{customer.mobile_number || '—'}</strong></div>
+                    <div>إجمالي الدين: <strong>{customer.stats_pending ? '—' : (debt > 0 ? `${debt.toLocaleString('en-US')} ﷼` : 'لا دين')}</strong></div>
+                    <div>التقييم: <strong>{rating === null ? 'غير متوفر' : `${rating.toFixed(1)}/10`}</strong></div>
+                </div>
+                <span className={getCustomerBadgeClass(status)} style={{ marginTop: '10px', display: 'inline-flex' }}>
+                    {getCustomerStatusLabel(status)}
+                </span>
+            </div>
+        );
+    }, []);
+
     return (
         <div className="customers-page-container">
             {showAdd && (
@@ -369,106 +603,19 @@ export default function CustomersPage() {
                     />
                 ) : (
                     <div className="table-scroll">
-                        <table className="data-table">
-                            <thead>
-                                <tr>
-                                    <th>#</th>
-                                    <th>الاسم</th>
-                                    <th>رقم الهوية</th>
-                                    <th>الجوال</th>
-                                    <th>التقييم</th>
-                                    <th>إجمالي الدين</th>
-                                    <th>الحالة</th>
-                                    <th>الإجراءات</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {customers.map((c, i) => {
-                                    const statsPending = Boolean(c.stats_pending);
-                                    const debt = statsPending ? 0 : parseFloat(c.total_debt || 0);
-                                    const status = statsPending ? '' : (c.customer_status || '').toLowerCase();
-                                    const rowStateClass = status === 'paid'
-                                        ? 'row-state-paid'
-                                        : status === 'raised'
-                                            ? 'row-state-raised'
-                                            : status === 'unpaid'
-                                                ? 'row-state-unpaid'
-                                                : '';
-                                    const hasRating = !statsPending && c.rating !== null && c.rating !== undefined && !Number.isNaN(Number(c.rating));
-                                    const ratingValue = hasRating ? Number(c.rating) : null;
-                                    const normalizedRating = ratingValue === null ? null : Math.max(0, Math.min(10, ratingValue));
-                                    return (
-                                        <tr key={c.id} className={rowStateClass}>
-                                            <td className="td-num">{(page - 1) * 15 + i + 1}</td>
-                                            <td>
-                                                <div className="customer-cell">
-                                                    <div className="customer-avatar" style={{ background: `hsl(${(c.full_name?.charCodeAt(0) || 0) * 40},60%,55%)` }}>
-                                                        {(c.full_name || '؟')[0]}
-                                                    </div>
-                                                    <span className="customer-name">{c.full_name}</span>
-                                                </div>
-                                            </td>
-                                            <td className="td-mono">{c.national_id || '—'}</td>
-                                            <td className="td-mono">{c.mobile_number || '—'}</td>
-                                            <td>
-                                                {statsPending ? (
-                                                    <span className="muted">—</span>
-                                                ) : !hasRating ? (
-                                                    <span className="muted">لم يتم التقييم</span>
-                                                ) : (
-                                                    <div className="rating-wrap">
-                                                        <div className="rating-bar">
-                                                            <div className="rating-fill" style={{ width: `${(normalizedRating || 0) * 10}%` }} />
-                                                        </div>
-                                                        <span className="rating-value">{(normalizedRating || 0).toFixed(1)}/10</span>
-                                                    </div>
-                                                )}
-                                            </td>
-                                            <td className={`td-amount ${debt > 0 ? 'amount-debt' : 'amount-zero'}`}>
-                                                {statsPending ? '—' : (debt > 0 ? `${debt.toLocaleString('en-US')} ﷼` : 'لا دين')}
-                                            </td>
-                                            <td>
-                                                {statsPending && <span className="badge badge-neutral">جارٍ التحديث</span>}
-                                                {status === 'paid' && <span className="badge badge-success">تم السداد</span>}
-                                                {status === 'raised' && <span className="badge badge-danger">قضايا</span>}
-                                                {status === 'unpaid' && <span className="badge badge-warn">لم يسدد</span>}
-                                                {status === 'new' && <span className="badge badge-neutral">جديد</span>}
-                                            </td>
-                                            <td>
-                                                <div className="action-btns">
-                                                    <button
-                                                        className="btn-action-icon"
-                                                        onClick={() => setEditingCustomer(c)}
-                                                        title="تعديل بيانات العميل"
-                                                        aria-label="تعديل بيانات العميل"
-                                                    >
-                                                        <IconEdit size={16} />
-                                                    </button>
-                                                    <button
-                                                        className="btn-action-icon"
-                                                        onClick={() => setRatingCustomer(c)}
-                                                        title="تقييم العميل"
-                                                        aria-label="تقييم العميل"
-                                                    >
-                                                        ★
-                                                    </button>
-                                                    {c.whatsappLink && (
-                                                        <a href={c.whatsappLink} target="_blank" rel="noopener noreferrer" className="btn-action-icon btn-whatsapp-icon" title="واتساب" aria-label="فتح واتساب">
-                                                            <IconWhatsapp size={16} />
-                                                        </a>
-                                                    )}
-                                                    {c.national_id && (
-                                                        <a href="https://najiz.sa" target="_blank" rel="noopener noreferrer" className="btn-action-icon btn-najiz-icon" title="ناجز" aria-label="فتح منصة ناجز">
-                                                            <IconScale size={16} />
-                                                        </a>
-                                                    )}
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
+                        <DataTablePro
+                            data={customers}
+                            columns={customerColumns}
+                            filters={customerFilters}
+                            bulkActions={customerBulkActions}
+                            searchPlaceholder="بحث سريع داخل النتائج المعروضة..."
+                            emptyLabel="لا توجد نتائج مطابقة في الجدول."
+                            exportFilePrefix="customers-table"
+                            exportMapper={customerExportMapper}
+                            rowClassName={(customer) => getCustomerStatusClass(getCustomerStatus(customer))}
+                            mobileCardRenderer={(customer) => renderCustomerCard(customer)}
+                            enableClientPagination={false}
+                        />
                     </div>
                 )}
 

@@ -1,0 +1,345 @@
+.wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.toolbarStart {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    flex: 1;
+    min-width: 260px;
+}
+
+.searchInput,
+.filterSelect {
+    background: rgba(255, 255, 255, 0.75);
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    color: #0f172a;
+    border-radius: 10px;
+    padding: 9px 12px;
+    font-size: 0.9rem;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.searchInput {
+    width: min(360px, 100%);
+    flex: 1;
+}
+
+.filterSelect {
+    min-width: 140px;
+}
+
+.searchInput:focus,
+.filterSelect:focus {
+    outline: none;
+    border-color: rgba(14, 116, 144, 0.55);
+    box-shadow: 0 0 0 3px rgba(14, 116, 144, 0.14);
+}
+
+.toolbarEnd {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.ghostBtn {
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    background: rgba(255, 255, 255, 0.85);
+    color: #0f172a;
+    border-radius: 10px;
+    padding: 8px 12px;
+    font-weight: 700;
+    font-size: 0.86rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.ghostBtn:hover:not(:disabled) {
+    border-color: rgba(14, 116, 144, 0.5);
+    color: #0e7490;
+}
+
+.ghostBtn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.bulkBar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 10px 12px;
+    border-radius: 12px;
+    border: 1px dashed rgba(148, 163, 184, 0.45);
+    background: linear-gradient(180deg, rgba(236, 254, 255, 0.45), rgba(224, 242, 254, 0.4));
+}
+
+.bulkInfo {
+    font-size: 0.85rem;
+    color: #0f172a;
+    font-weight: 700;
+}
+
+.bulkActions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.bulkAction {
+    border: 1px solid rgba(8, 47, 73, 0.2);
+    background: white;
+    color: #0f172a;
+    border-radius: 10px;
+    padding: 8px 11px;
+    font-weight: 700;
+    font-size: 0.83rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.bulkAction:hover:not(:disabled) {
+    transform: translateY(-1px);
+    border-color: rgba(8, 47, 73, 0.5);
+}
+
+.bulkActionDanger {
+    border-color: rgba(190, 24, 93, 0.4);
+    color: #9f1239;
+}
+
+.bulkActionDanger:hover:not(:disabled) {
+    border-color: rgba(190, 24, 93, 0.8);
+}
+
+.tableWrap {
+    border-radius: 14px;
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.86);
+}
+
+.tableScroller {
+    overflow-x: auto;
+}
+
+.table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 980px;
+}
+
+.tableHead {
+    background: rgba(248, 250, 252, 0.86);
+}
+
+.th {
+    color: #475569;
+    font-size: 0.74rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    font-weight: 700;
+    padding: 12px 10px;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+    white-space: nowrap;
+    user-select: none;
+}
+
+.thSortable {
+    cursor: pointer;
+}
+
+.thInner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+}
+
+.sortMark {
+    color: #0e7490;
+    font-size: 0.72rem;
+}
+
+.row {
+    border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.row:last-child {
+    border-bottom: 0;
+}
+
+.row:hover td {
+    background: rgba(248, 250, 252, 0.86);
+}
+
+.td {
+    padding: 11px 10px;
+    color: #0f172a;
+    font-size: 0.86rem;
+    vertical-align: top;
+}
+
+.selectionCell {
+    width: 46px;
+}
+
+.checkbox {
+    width: 16px;
+    height: 16px;
+    accent-color: #0e7490;
+    cursor: pointer;
+}
+
+.emptyCell {
+    text-align: center;
+    padding: 20px;
+    color: #64748b;
+    font-weight: 600;
+}
+
+.mobileList {
+    display: none;
+    gap: 10px;
+    flex-direction: column;
+}
+
+.mobileCard {
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    border-radius: 12px;
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.9);
+}
+
+.mobileFallbackList {
+    display: grid;
+    gap: 6px;
+}
+
+.mobileFallbackRow {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 8px;
+    align-items: center;
+    font-size: 0.84rem;
+}
+
+.mobileFallbackKey {
+    color: #64748b;
+    font-weight: 700;
+}
+
+.mobileFallbackValue {
+    color: #0f172a;
+    font-weight: 600;
+    word-break: break-word;
+}
+
+.pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.paginationBtns {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.pageBtn {
+    min-width: 34px;
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    border-radius: 8px;
+    background: white;
+    color: #0f172a;
+    font-weight: 700;
+    font-size: 0.82rem;
+    padding: 5px 9px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.pageBtn:hover:not(:disabled) {
+    border-color: rgba(14, 116, 144, 0.4);
+    color: #0e7490;
+}
+
+.pageBtn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.activePageBtn {
+    border-color: #0e7490;
+    color: #0e7490;
+    background: rgba(224, 242, 254, 0.65);
+}
+
+.pageInfo {
+    font-size: 0.82rem;
+    color: #475569;
+    font-weight: 700;
+}
+
+@media (max-width: 980px) {
+    .tableWrap {
+        display: none;
+    }
+
+    .mobileList {
+        display: flex;
+    }
+
+    .searchInput {
+        width: 100%;
+    }
+}
+
+[data-theme="dark"] .searchInput,
+[data-theme="dark"] .filterSelect,
+[data-theme="dark"] .ghostBtn,
+[data-theme="dark"] .bulkAction,
+[data-theme="dark"] .pageBtn,
+[data-theme="dark"] .mobileCard,
+[data-theme="dark"] .tableWrap {
+    background: rgba(15, 23, 42, 0.82);
+    border-color: rgba(148, 163, 184, 0.28);
+    color: #e2e8f0;
+}
+
+[data-theme="dark"] .bulkBar {
+    background: linear-gradient(180deg, rgba(12, 74, 110, 0.25), rgba(8, 47, 73, 0.2));
+    border-color: rgba(14, 116, 144, 0.45);
+}
+
+[data-theme="dark"] .th,
+[data-theme="dark"] .pageInfo,
+[data-theme="dark"] .bulkInfo,
+[data-theme="dark"] .mobileFallbackValue,
+[data-theme="dark"] .td {
+    color: #e2e8f0;
+}
+
+[data-theme="dark"] .mobileFallbackKey {
+    color: #94a3b8;
+}
