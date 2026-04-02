@@ -90,7 +90,7 @@ export default function PerfPage() {
 
         <div className="perf-table">
           {timings.length === 0 && !loading && (
-            <div className="perf-empty">اضغط "ابدأ القياس" لعرض النتائج.</div>
+            <div className="perf-empty">اضغط &quot;ابدأ القياس&quot; لعرض النتائج.</div>
           )}
           {timings.map((item) => (
             <div key={item.id} className="perf-row">
