@@ -6,9 +6,9 @@
 @import "./landing.css";
 @import "./pricing/pricing.css";
 @import "./dashboard/layout-shell.css";
-@import "./dashboard/dashboard.css";
-@import "./dashboard/loans/loans.css";
-@import "./dashboard/customers/customers.css";
+@import "../features/dashboard/styles/dashboard.css";
+@import "../features/loans/styles/loans.css";
+@import "../features/customers/styles/customers.css";
 @import "./dashboard/najiz/najiz.css";
 @import "./dashboard/loans/new/add-loan.css";
 
