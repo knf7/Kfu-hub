@@ -3,7 +3,7 @@
 import React, { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { loansAPI, customersAPI } from '@/lib/api';
-import { toast } from 'sonner';
+import { appToast } from '@/components/ui/sonner';
 import MoneyRain from '@/components/layout/MoneyRain';
 
 type ExistingCustomer = {
@@ -100,7 +100,7 @@ export default function AddLoanPage() {
 
             setSuccess(true);
             setShowMoneyRain(true);
-            toast.success('تم حفظ القرض بنجاح');
+            appToast.success('تم حفظ القرض بنجاح');
             setTimeout(() => {
                 router.replace(`/dashboard/loans?ref=${Date.now()}`);
             }, 900);
@@ -140,7 +140,7 @@ export default function AddLoanPage() {
             setAttachmentName(file.name);
             setFormData((prev) => ({ ...prev, receiptImageUrl: attachmentUrl }));
             setError('');
-            toast.success('تم إرفاق صورة/ملف السند');
+            appToast.success('تم إرفاق صورة/ملف السند');
         } catch (err: unknown) {
             const apiError = err as { response?: { data?: { error?: string } } };
             console.error('Attachment upload error:', err);

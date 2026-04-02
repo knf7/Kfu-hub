@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { loansAPI, invalidateCacheForScopes } from '@/lib/api';
-import { toast } from 'sonner';
+import { appToast } from '@/components/ui/sonner';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
     IconSearch, IconSave, IconExternalLink, IconDollarSign,
@@ -186,12 +186,12 @@ export default function NajizCasesPage() {
             scheduleRefresh(800, true);
 
         } catch {
-            toast.error('فشل حفظ التحديثات');
+            appToast.error('فشل حفظ التحديثات');
             return;
         } finally {
             setUpdatingId(null);
         }
-        toast.success('تم حفظ التحديثات');
+        appToast.success('تم حفظ التحديثات');
     };
 
     const openMarkAsPaidConfirm = (loanId: string) => {
@@ -223,9 +223,9 @@ export default function NajizCasesPage() {
                     : currentLoan
             ));
             scheduleRefresh(900, true);
-            toast.success('تم تحديث الحالة إلى: تم السداد');
+            appToast.success('تم تحديث الحالة إلى: تم السداد');
         } catch {
-            toast.error('فشل في التحديث');
+            appToast.error('فشل في التحديث');
         } finally {
             setConfirmPaidCaseId(null);
         }
@@ -272,9 +272,9 @@ export default function NajizCasesPage() {
                     : row
             )));
             scheduleRefresh(350, true);
-            toast.success('تم رفع المرفق وربطه بالقضية');
+            appToast.success('تم رفع المرفق وربطه بالقضية');
         } catch (error: any) {
-            toast.error(error?.response?.data?.error || 'فشل رفع المرفق');
+            appToast.error(error?.response?.data?.error || 'فشل رفع المرفق');
         } finally {
             setUploadingAttachmentId(null);
         }

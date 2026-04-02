@@ -3,7 +3,7 @@
 import { ChangeEvent, ReactElement, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
-import { toast } from 'sonner';
+import { appToast } from '@/components/ui/sonner';
 import AnimatedBackground from '@/components/layout/AnimatedBackground';
 import {
   IconCheck,
@@ -144,7 +144,7 @@ export default function PricingPage() {
 
   const handleSubmitRequest = async () => {
     if (!selectedPlan || !receiptFile) {
-      toast.error('الرجاء إرفاق صورة الإيصال');
+      appToast.error('الرجاء إرفاق صورة الإيصال');
       return;
     }
 
@@ -158,7 +158,7 @@ export default function PricingPage() {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       setRequestStatus('success');
-      toast.success('تم إرسال الطلب بنجاح');
+      appToast.success('تم إرسال الطلب بنجاح');
       setTimeout(() => {
         setSelectedPlan(null);
         setRequestStatus(null);
@@ -168,10 +168,10 @@ export default function PricingPage() {
       const apiError = error as ApiError;
       if (apiError.response && [401, 403].includes(apiError.response.status || 0)) {
         localStorage.clear();
-        toast.error('انتهت صلاحية الجلسة. يرجى تسجيل الدخول مجدداً.');
+        appToast.error('انتهت صلاحية الجلسة. يرجى تسجيل الدخول مجدداً.');
         router.push('/login');
       } else {
-        toast.error(apiError.response?.data?.error || 'فشل إرسال الطلب');
+        appToast.error(apiError.response?.data?.error || 'فشل إرسال الطلب');
       }
     } finally {
       setLoading(null);
