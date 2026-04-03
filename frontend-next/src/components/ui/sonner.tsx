@@ -20,7 +20,7 @@ const toastClassMap = {
   info: "border-sky-200 bg-sky-50 text-sky-900 dark:border-sky-800 dark:bg-sky-950/50 dark:text-sky-200",
 } as const
 
-export const appToast = {
+const appToast = {
   success: (message: string, description?: string) =>
     toast.success(message, {
       description,
