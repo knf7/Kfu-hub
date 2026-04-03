@@ -8,7 +8,7 @@ import {
   TriangleAlertIcon,
 } from "lucide-react"
 import { useTheme } from "next-themes"
-import { Toaster as Sonner, type ToasterProps } from "sonner"
+import { toast, Toaster as Sonner, type ExternalToast, type ToasterProps } from "sonner"
 
 const Toaster = ({ ...props }: ToasterProps) => {
   const { theme = "system" } = useTheme()
@@ -37,4 +37,13 @@ const Toaster = ({ ...props }: ToasterProps) => {
   )
 }
 
-export { Toaster }
+const appToast = {
+  success: (message: string, options?: ExternalToast) => toast.success(message, options),
+  error: (message: string, options?: ExternalToast) => toast.error(message, options),
+  warning: (message: string, options?: ExternalToast) => toast.warning(message, options),
+  info: (message: string, options?: ExternalToast) => toast.info(message, options),
+  loading: (message: string, options?: ExternalToast) => toast.loading(message, options),
+  dismiss: (toastId?: string | number) => toast.dismiss(toastId),
+}
+
+export { Toaster, appToast }
