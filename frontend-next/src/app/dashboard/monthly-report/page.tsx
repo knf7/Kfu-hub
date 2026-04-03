@@ -124,6 +124,16 @@ const STATUS_COLORS: Record<string, string> = {
   Raised: '#8b5cf6',
 };
 
+const getStatusClass = (status?: string | null) => {
+  const normalized = String(status || '').toLowerCase();
+  if (normalized === 'paid') return 'state-paid';
+  if (normalized === 'raised') return 'state-raised';
+  if (normalized === 'active') return 'state-active';
+  if (normalized === 'overdue') return 'state-overdue';
+  if (normalized === 'cancelled') return 'state-cancelled';
+  return 'state-neutral';
+};
+
 const MONTH_LABELS = [
   'يناير',
   'فبراير',
@@ -157,6 +167,28 @@ const formatMonthYear = (value?: string | null) => {
   if (Number.isNaN(date.getTime())) return '—';
   return `${MONTH_LABELS[date.getMonth()]} ${date.getFullYear()}`;
 };
+
+const formatNumberArabic = (value: number | null | undefined) => {
+  const safe = Number(value || 0);
+  return safe.toLocaleString('ar-SA');
+};
+
+const LoadingState = () => (
+  <div className="mr-loading">
+    <div className="mr-spinner" />
+    <p>جاري تجهيز التقرير الشهري...</p>
+    <span className="mr-loading-sub">يعتمد الوقت على حجم البيانات</span>
+    <div className="mr-skeleton-grid" aria-hidden="true">
+      {Array.from({ length: 3 }, (_, index) => (
+        <div key={`skeleton-${index}`} className="mr-card skeleton">
+          <div className="skeleton-line skeleton-title" />
+          <div className="skeleton-line" />
+          <div className="skeleton-line skeleton-short" />
+        </div>
+      ))}
+    </div>
+  </div>
+);
 
 const defaultPeriod = () => {
   const now = new Date();
@@ -197,6 +229,8 @@ export default function MonthlyReportPage() {
   };
   const trackingStart = report?.tracking?.scope?.fromDate || report?.period?.startDate || null;
   const trackingStartLabel = trackingStart ? formatMonthYear(trackingStart) : `${MONTH_LABELS[month - 1]} ${year}`;
+
+  const hasReportData = Boolean(report);
 
   const fetchReport = async (force = false) => {
     setLoading(true);
@@ -256,6 +290,25 @@ export default function MonthlyReportPage() {
     return /[",\n]/.test(escaped) ? `"${escaped}"` : escaped;
   };
 
+  const handleExportError = (type: 'xlsx' | 'csv' | 'json' | 'yearly') => {
+    const errors: Record<typeof type, string> = {
+      xlsx: 'فشل تنزيل Excel. تحقق من اتصالك بالإنترنت.',
+      csv: 'فشل تنزيل CSV. حاول مرة أخرى.',
+      json: 'فشل تنزيل JSON. حاول بعد دقائق.',
+      yearly: 'فشل تنزيل دفتر العمل السنوي.',
+    };
+    appToast.error(errors[type]);
+  };
+
+  const renderEmptyState = () => (
+    <div className="mr-empty-state">
+      <p>لا توجد بيانات متاحة للشهر المختار.</p>
+      <button type="button" onClick={() => fetchReport(true)} disabled={loading || exporting !== null}>
+        إعادة المحاولة
+      </button>
+    </div>
+  );
+
   const handleExportXlsx = async () => {
     setExporting('xlsx');
     try {
@@ -267,7 +320,7 @@ export default function MonthlyReportPage() {
       });
       appToast.success('تم تنزيل ملف Excel بنجاح.');
     } catch {
-      appToast.error('تعذر تصدير ملف Excel حالياً.');
+      handleExportError('xlsx');
     } finally {
       setExporting(null);
     }
@@ -354,7 +407,7 @@ export default function MonthlyReportPage() {
       downloadTextFile(csv, `monthly-report-${fileStamp}.csv`, 'text/csv;charset=utf-8;', true);
       appToast.success('تم تنزيل ملف CSV بنجاح.');
     } catch {
-      appToast.error('تعذر تصدير ملف CSV حالياً.');
+      handleExportError('csv');
     } finally {
       setExporting(null);
     }
@@ -379,7 +432,7 @@ export default function MonthlyReportPage() {
       );
       appToast.success('تم تنزيل ملف JSON بنجاح.');
     } catch {
-      appToast.error('تعذر تصدير ملف JSON حالياً.');
+      handleExportError('json');
     } finally {
       setExporting(null);
     }
@@ -391,7 +444,7 @@ export default function MonthlyReportPage() {
       await reportsAPI.exportYearlyWorkbookXlsx(year);
       appToast.success('تم تنزيل ملف Excel السنوي (Sheets شهرية) بنجاح.');
     } catch {
-      appToast.error('تعذر تصدير ملف Excel السنوي حالياً.');
+      handleExportError('yearly');
     } finally {
       setExporting(null);
     }
@@ -469,16 +522,15 @@ export default function MonthlyReportPage() {
       </header>
 
       {loading ? (
-        <div className="mr-loading">
-          <div className="mr-spinner" />
-          <p>جاري تجهيز التقرير الشهري...</p>
-        </div>
+        <LoadingState />
+      ) : !hasReportData ? (
+        renderEmptyState()
       ) : (
         <>
           <section className="mr-kpis">
             <article>
               <header><IconClipboard size={16} /><span>إجمالي القروض</span></header>
-              <strong>{Number(report?.summary?.totalLoans || 0).toLocaleString('en-US')}</strong>
+              <strong>{formatNumberArabic(report?.summary?.totalLoans || 0)}</strong>
             </article>
             <article>
               <header><IconMoney size={16} /><span>إجمالي الصرف</span></header>
@@ -490,13 +542,14 @@ export default function MonthlyReportPage() {
             </article>
             <article>
               <header><IconUsers size={16} /><span>عملاء الشهر</span></header>
-              <strong>{Number(report?.summary?.uniqueCustomers || 0).toLocaleString('en-US')}</strong>
+              <strong>{formatNumberArabic(report?.summary?.uniqueCustomers || 0)}</strong>
             </article>
             <article>
               <header><IconActivity size={16} /><span>نسبة التحصيل</span></header>
-              <strong>{Number(report?.summary?.collectionRate || 0)}%</strong>
+              <strong>{formatNumberArabic(report?.summary?.collectionRate || 0)}%</strong>
             </article>
           </section>
+          <div className="mr-divider" />
 
           <section className="mr-grid">
             <article className="mr-card wide tracking">
@@ -519,9 +572,15 @@ export default function MonthlyReportPage() {
                 <div className="mr-tracking-col">
                   <h3>قضايا ناجز من الشهر المختار حتى الآن</h3>
                   <div className="mr-track-table">
+                    <div className="mr-track-head" aria-hidden="true">
+                      <span>العميل</span>
+                      <span>المبالغ</span>
+                      <span>الحالة / القضية</span>
+                      <span>التاريخ</span>
+                    </div>
                     {najizCases.length === 0 && <p className="mr-empty">لا توجد قضايا ناجز ضمن الفترة التراكمية المختارة.</p>}
                     {najizCases.map((item) => (
-                      <div key={item.loanId} className="mr-track-row">
+                      <div key={item.loanId} className={`mr-track-row ${getStatusClass(item.status)}`}>
                         <div>
                           <strong>{item.customerName || '—'}</strong>
                           <small>{item.mobileNumber || 'بدون جوال'}</small>
@@ -546,9 +605,15 @@ export default function MonthlyReportPage() {
                 <div className="mr-tracking-col">
                   <h3>غير المسددين من الشهر المختار حتى الآن</h3>
                   <div className="mr-track-table">
+                    <div className="mr-track-head" aria-hidden="true">
+                      <span>العميل</span>
+                      <span>المبالغ</span>
+                      <span>الحالة / القضية</span>
+                      <span>التاريخ</span>
+                    </div>
                     {monthEndUnpaid.length === 0 && <p className="mr-empty">لا توجد قروض غير مسددة ضمن الفترة التراكمية.</p>}
                     {monthEndUnpaid.map((item) => (
-                      <div key={item.loanId} className="mr-track-row">
+                      <div key={item.loanId} className={`mr-track-row ${getStatusClass(item.status)}`}>
                         <div>
                           <strong>{item.customerName || '—'}</strong>
                           <small>{item.mobileNumber || 'بدون جوال'}</small>
@@ -573,7 +638,7 @@ export default function MonthlyReportPage() {
             </article>
             {!focusTracking && (
               <>
-            <article className="mr-card">
+            <article className="mr-card mr-card-growth">
               <h2>التغير عن الشهر السابق</h2>
               <div className="mr-growth">
                 <div>
@@ -591,16 +656,16 @@ export default function MonthlyReportPage() {
               </div>
             </article>
 
-            <article className="mr-card">
+            <article className="mr-card mr-card-status">
               <h2>توزيع الحالات</h2>
               <div className="mr-status-list">
                 {(report?.statusBreakdown || []).map((row) => {
                   const width = Math.max(8, Math.round((Number(row.count || 0) / maxStatusCount) * 100));
                   return (
-                    <div key={row.status} className="mr-status-row">
+                    <div key={row.status} className={`mr-status-row ${getStatusClass(row.status)}`}>
                       <div className="mr-status-label">
                         <span>{STATUS_LABELS[row.status] || row.status}</span>
-                        <small>{Number(row.count || 0).toLocaleString('en-US')}</small>
+                        <small>{formatNumberArabic(row.count || 0)}</small>
                       </div>
                       <div className="mr-status-track">
                         <i
@@ -616,7 +681,7 @@ export default function MonthlyReportPage() {
               </div>
             </article>
 
-            <article className="mr-card tall">
+            <article className="mr-card tall mr-card-customers">
               <h2>أبرز العملاء في الشهر</h2>
               <div className="mr-customers">
                 {(report?.topCustomers || []).length === 0 && <p className="mr-empty">لا توجد بيانات عملاء لهذا الشهر.</p>}
@@ -635,7 +700,7 @@ export default function MonthlyReportPage() {
               </div>
             </article>
 
-            <article className="mr-card tall">
+            <article className="mr-card tall mr-card-insights">
               <h2>قراءة ذكية</h2>
               <div className="mr-insights">
                 {(report?.insights || []).map((insight, index) => (
@@ -656,7 +721,7 @@ export default function MonthlyReportPage() {
               </ul>
             </article>
 
-            <article className="mr-card wide">
+            <article className="mr-card wide mr-card-weeks">
               <h2>إيقاع الأسابيع داخل الشهر</h2>
               <div className="mr-weeks">
                 {(report?.weeklyTrend || []).length === 0 && <p className="mr-empty">لا توجد حركة أسبوعية مسجلة.</p>}

@@ -41,6 +41,11 @@ export const appToast = {
       description,
       className: `${baseToastClass} ${toastClassMap.info}`,
     }),
+  loading: (message: string) =>
+    toast.loading(message, {
+      className: `${baseToastClass} ${toastClassMap.info}`,
+    }),
+  dismiss: (id?: string | number) => toast.dismiss(id),
 }
 
 const Toaster = ({ ...props }: ToasterProps) => {
@@ -70,4 +75,4 @@ const Toaster = ({ ...props }: ToasterProps) => {
   )
 }
 
-export { Toaster }
+export { Toaster, appToast }
