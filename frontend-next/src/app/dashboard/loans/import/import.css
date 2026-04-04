@@ -23,6 +23,39 @@
     margin: 4px 0 0;
 }
 
+.import-sections-switch {
+    display: inline-flex;
+    gap: 8px;
+    padding: 8px;
+    border-radius: 14px;
+    margin-bottom: 18px;
+}
+
+.section-chip {
+    min-height: 38px;
+    border-radius: 10px;
+    border: 1px solid var(--glass-border);
+    background: transparent;
+    color: var(--text-secondary);
+    padding: 0 14px;
+    font-size: 13px;
+    font-weight: 800;
+    cursor: pointer;
+    transition: all .2s ease;
+}
+
+.section-chip:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.section-chip.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+    box-shadow: 0 6px 14px rgba(96, 165, 250, 0.32);
+}
+
 /* ── Drop Zone ───────────────────────────────── */
 .drop-zone {
     border: 2px dashed rgba(96, 165, 250, 0.25);

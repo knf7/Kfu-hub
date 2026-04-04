@@ -432,6 +432,16 @@ export const customersAPI = {
         emitDataSync({ scopes: ['customers', 'loans', 'dashboard', 'reports'], reason: 'customer-created' });
         return res;
     },
+    upload: async (formData: FormData) => {
+        const res = await api.post('/customers/upload', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        clearCacheByPrefix('/customers');
+        clearCacheByPrefix('/reports');
+        clearDashboardCache();
+        emitDataSync({ scopes: ['customers', 'loans', 'dashboard', 'reports'], reason: 'customer-upload' });
+        return res;
+    },
     update: async (id: string, data: any) => {
         const res = await api.patch(`/customers/${id}`, data);
         clearCacheByPrefix('/customers');

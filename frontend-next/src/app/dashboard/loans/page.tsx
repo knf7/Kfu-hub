@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useDeferredValue, useTransition, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { loansAPI, customersAPI } from '@/lib/api';
+import { normalizeSearchText, smartFilterAndSort } from '@/lib/smart-search';
 import { appToast } from '@/components/ui/sonner';
 import {
     IconUpload, IconDownload, IconPlus, IconTrash,
@@ -20,7 +21,7 @@ const normalizeInterestRate = (rate: number) => (
 );
 
 const buildLoanQueryParams = (filters: any, page: number, limit: number) => {
-    const searchValue = String(filters.search || '').trim();
+    const searchValue = normalizeSearchText(filters.search || '');
     const params: Record<string, any> = {
         page,
         limit
@@ -52,7 +53,7 @@ const LoansPage = () => {
         endDate: '',
         delayed: false
     });
-    const debouncedSearch = useDebounce(filters.search, 350);
+    const debouncedSearch = useDebounce(filters.search, 220);
     const filterSnapshot = useMemo(() => ({
         search: debouncedSearch,
         status: filters.status,
@@ -74,6 +75,21 @@ const LoansPage = () => {
     const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const loansRef = useRef<any[]>(loans);
     const requestIdRef = useRef(0);
+    const normalizedTypedSearch = useMemo(() => normalizeSearchText(filters.search), [filters.search]);
+    const visibleLoans = useMemo(
+        () => smartFilterAndSort(
+            loans,
+            normalizedTypedSearch,
+            (loan) => [
+                loan.customer_name,
+                loan.national_id,
+                loan.mobile_number,
+                loan.receipt_number,
+                loan.najiz_case_number
+            ]
+        ),
+        [loans, normalizedTypedSearch]
+    );
 
     useEffect(() => {
         loansRef.current = loans;
@@ -335,14 +351,14 @@ const LoansPage = () => {
                                 </tr>
                             </thead>
                             <tbody>
-                                {loans.length === 0 ? (
+                                {visibleLoans.length === 0 ? (
                                     <tr>
                                         <td colSpan={11} className="empty-state">
                                             لا توجد قروض مسجلة
                                         </td>
                                     </tr>
                                 ) : (
-                                    loans.map(loan => (
+                                    visibleLoans.map(loan => (
                                         <tr
                                             key={loan.id}
                                             className={(() => {

@@ -313,10 +313,6 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
                 </Link>
               )}
             </div>
-            <label className="command-box" aria-label="بحث سريع">
-              <input placeholder="ابحث عن عميل، قرض، أو أمر..." />
-              <kbd>⌘K</kbd>
-            </label>
             <div className="topbar-user-tools">
               <button
                 type="button"

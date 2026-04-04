@@ -1,8 +1,8 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
-import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import { getResetPasswordRedirectUrl, getSupabaseClient, isSupabaseConfigured } from '@/lib/supabase';
+import { appToast } from '@/shared/ui/toast';
 
 type ApiError = {
     response?: {
@@ -40,6 +40,14 @@ export function useAuth() {
                 });
 
                 if (!supaError && supaData.session?.access_token) {
+                    // Prefer backend-issued JWT for full API compatibility across all endpoints.
+                    try {
+                        const { data: backendLogin } = await api.post('/auth/login', { identifier, password, rememberMe });
+                        return { mode: 'backend', ...backendLogin, viaSupabase: true };
+                    } catch {
+                        // If backend login fails, keep Supabase session as graceful fallback.
+                    }
+
                     try {
                         localStorage.setItem('token', supaData.session.access_token);
                         if (rememberMe) {
@@ -58,7 +66,7 @@ export function useAuth() {
                         }
                         return { mode: 'supabase', user: merchant };
                     } catch {
-                        // Backend likely doesn't accept Supabase JWT yet - fallback below.
+                        // Supabase JWT not accepted by backend profile endpoint - fallback below.
                         localStorage.removeItem('token');
                         try { await supabase.auth.signOut(); } catch { /* ignore */ }
                     }
@@ -71,7 +79,7 @@ export function useAuth() {
         },
         onSuccess: (data) => {
             if (data.requiresOTP) {
-                toast('OTP Required. Please check your email.');
+                appToast.info('OTP Required. Please check your email.');
                 return;
             }
 
@@ -87,9 +95,9 @@ export function useAuth() {
                     }
                 }
             }
-            toast.success('تم تسجيل الدخول بنجاح.');
+            appToast.success('تم تسجيل الدخول بنجاح.');
             queryClient.invalidateQueries({ queryKey: ['user'] });
-            router.push('/dashboard/quick-entry');
+            router.push('/dashboard');
         },
         onError: (error: unknown) => {
             const apiError = error as ApiError;
@@ -98,7 +106,7 @@ export function useAuth() {
                 (apiError.response?.status ? `فشل تسجيل الدخول (HTTP ${apiError.response.status}).` : '') ||
                 apiError.message ||
                 'فشل تسجيل الدخول. تحقق من بياناتك.';
-            toast.error(message);
+            appToast.error(message);
         },
     });
 
@@ -146,9 +154,9 @@ export function useAuth() {
         },
         onSuccess: (data) => {
             if (data?.supabaseWarning) {
-                toast.warning(`تم إنشاء الحساب، لكن Supabase أرجع تنبيه: ${data.supabaseWarning}`);
+                appToast.warning(`تم إنشاء الحساب، لكن Supabase أرجع تنبيه: ${data.supabaseWarning}`);
             } else {
-                toast.success('تم إنشاء الحساب بنجاح. يمكنك تسجيل الدخول الآن.');
+                appToast.success('تم إنشاء الحساب بنجاح. يمكنك تسجيل الدخول الآن.');
             }
             router.push('/login');
         },
@@ -159,7 +167,7 @@ export function useAuth() {
                 (apiError.response?.status ? `فشل إنشاء الحساب (HTTP ${apiError.response.status}).` : '') ||
                 apiError.message ||
                 'فشل إنشاء الحساب.';
-            toast.error(message);
+            appToast.error(message);
         },
     });
 
@@ -182,8 +190,9 @@ export function useAuth() {
             return data;
         },
         onSuccess: (data) => {
-            const message = data?.message || 'إذا كان البريد مسجلاً لدينا فسيتم إرسال رابط إعادة التعيين.';
-            toast.success(message);
+            const baseMessage = data?.message || 'إذا كان البريد مسجلاً لدينا فسيتم إرسال رابط إعادة التعيين.';
+            const message = `${baseMessage} تحقق من صندوق الرسائل غير الهامة (Spam).`;
+            appToast.success(message);
         },
         onError: (error: unknown) => {
             const apiError = error as ApiError;
@@ -192,7 +201,7 @@ export function useAuth() {
                 (apiError.response?.status ? `تعذر إرسال الطلب (HTTP ${apiError.response.status}).` : '') ||
                 apiError.message ||
                 'تعذر إرسال رابط إعادة التعيين.';
-            toast.error(message);
+            appToast.error(message);
         },
     });
 
@@ -224,7 +233,7 @@ export function useAuth() {
         },
         onSuccess: (data) => {
             const message = data?.message || 'تم تغيير كلمة المرور بنجاح.';
-            toast.success(message);
+            appToast.success(message);
             router.push('/login');
         },
         onError: (error: unknown) => {
@@ -234,7 +243,7 @@ export function useAuth() {
                 (apiError.response?.status ? `تعذر إعادة التعيين (HTTP ${apiError.response.status}).` : '') ||
                 apiError.message ||
                 'فشلت عملية إعادة تعيين كلمة المرور.';
-            toast.error(message);
+            appToast.error(message);
         },
     });
 

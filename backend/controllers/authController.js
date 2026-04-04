@@ -7,6 +7,28 @@ const { JWT_SECRET, JWT_EXPIRES_IN } = require('../middleware/auth');
 const { setOTP, getOTP, deleteOTP, redis } = require('../config/redis');
 const { sendOTPEmail, sendResetPasswordEmail } = require('../utils/mailer');
 
+const resolveFrontendOrigin = () => {
+    const candidates = [
+        process.env.FRONTEND_URL,
+        process.env.NEXT_PUBLIC_APP_URL,
+        process.env.APP_URL,
+        process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null
+    ];
+
+    for (const candidate of candidates) {
+        if (!candidate) continue;
+        const normalized = String(candidate).trim().replace(/\/$/, '');
+        if (normalized) return normalized;
+    }
+
+    return 'http://localhost:3000';
+};
+
+const buildResetPasswordUrl = (token) => {
+    const origin = resolveFrontendOrigin();
+    return `${origin}/reset-password?token=${encodeURIComponent(token)}`;
+};
+
 // Validation schemas (mobile: 10-15 digits)
 const registerSchema = Joi.object({
     username: Joi.string().trim().alphanum().min(3).max(30).required(),
@@ -399,18 +421,30 @@ exports.endAllSessions = async (req, res) => {
 };
 
 exports.forgotPassword = async (req, res) => {
-    const { email } = req.body;
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    if (!email) {
+        return res.status(400).json({ error: 'البريد الإلكتروني مطلوب' });
+    }
+
     const client = await db.pool.connect();
     try {
         await client.query('BEGIN');
         await client.query("SET LOCAL app.is_authenticating = 'true'");
-        const result = await client.query('SELECT id FROM merchants WHERE email = $1', [email]);
+        const result = await client.query(
+            'SELECT id, email FROM merchants WHERE lower(email) = lower($1) LIMIT 1',
+            [email]
+        );
         await client.query('COMMIT');
         if (result.rows.length > 0) {
             const token = jwt.sign({ merchantId: result.rows[0].id, purpose: 'password_reset' }, JWT_SECRET, { expiresIn: '30m' });
-            await sendResetPasswordEmail(email, `${process.env.FRONTEND_URL}/reset-password?token=${token}`);
+            const resetLink = buildResetPasswordUrl(token);
+            await sendResetPasswordEmail(result.rows[0].email || email, resetLink);
         }
         res.json({ message: 'تم الإرسال إن وجد' });
+    } catch (err) {
+        try { await client.query('ROLLBACK'); } catch { /* ignore */ }
+        console.error('Forgot password error:', err);
+        res.status(500).json({ error: 'تعذر تنفيذ طلب استعادة كلمة المرور' });
     } finally { client.release(); }
 };
 

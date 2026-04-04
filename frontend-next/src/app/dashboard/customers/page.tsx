@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useDeferredValue, useTransition, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { customersAPI } from '@/lib/api';
+import { normalizeSearchText, smartFilterAndSort } from '@/lib/smart-search';
 import { appToast } from '@/components/ui/sonner';
 import { IconWhatsapp, IconScale, IconEdit } from '@/components/layout/icons';
 import { useDataSync } from '@/hooks/useDataSync';
@@ -19,7 +20,7 @@ export default function CustomersPage() {
     const [loading, setLoading] = useState(!initialCache);
     const [errorMsg, setErrorMsg] = useState('');
     const [search, setSearch] = useState('');
-    const debouncedSearch = useDebounce(search, 350);
+    const debouncedSearch = useDebounce(search, 220);
     const deferredSearch = useDeferredValue(debouncedSearch);
     const [, startTransition] = useTransition();
     const [page, setPage] = useState<number>(initialCache?.pagination?.page ?? 1);
@@ -32,6 +33,20 @@ export default function CustomersPage() {
     const statsRequestRef = useRef(0);
     const customersRef = useRef<any[]>(initialCache?.customers || []);
     const hasVisibleCustomersRef = useRef(Boolean(initialCache?.customers?.length));
+    const normalizedTypedSearch = useMemo(() => normalizeSearchText(search), [search]);
+    const visibleCustomers = useMemo(
+        () => smartFilterAndSort(
+            customers,
+            normalizedTypedSearch,
+            (customer) => [
+                customer.full_name,
+                customer.national_id,
+                customer.mobile_number,
+                customer.email
+            ]
+        ),
+        [customers, normalizedTypedSearch]
+    );
 
     const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
     const shouldRetry = (err: any) => {
@@ -66,7 +81,7 @@ export default function CustomersPage() {
     const fetchCustomers = useCallback(async (pageOverride?: number, opts: { forceFresh?: boolean } = {}) => {
         const requestId = ++requestIdRef.current;
         const requestPage = pageOverride ?? page;
-        const searchValue = deferredSearch.trim();
+        const searchValue = normalizeSearchText(deferredSearch);
         const forceFresh = Boolean(opts.forceFresh);
         const skipCount = Boolean(searchValue);
         const includeStats = false;
@@ -203,9 +218,9 @@ export default function CustomersPage() {
         link.click();
     };
 
-    const totalCustomers = customers.length;
-    const statsLoading = customers.some((c) => c.stats_pending);
-    const customersWithDebt = statsLoading ? 0 : customers.filter((c) => parseFloat(c.total_debt || 0) > 0).length;
+    const totalCustomers = visibleCustomers.length;
+    const statsLoading = visibleCustomers.some((c) => c.stats_pending);
+    const customersWithDebt = statsLoading ? 0 : visibleCustomers.filter((c) => parseFloat(c.total_debt || 0) > 0).length;
     const clearCustomers = statsLoading ? 0 : totalCustomers - customersWithDebt;
     const pageItems = useMemo(() => {
         const items: Array<number | 'ellipsis'> = [];
@@ -277,9 +292,12 @@ export default function CustomersPage() {
             <div className="page-top fade-up">
                 <div>
                     <h1 className="page-title">إدارة العملاء</h1>
-                    <p className="page-sub">{customers.length} عميل معروض</p>
+                    <p className="page-sub">{visibleCustomers.length} عميل معروض</p>
                 </div>
                 <div className="page-actions">
+                    <button className="btn btn-secondary" onClick={() => router.push('/dashboard/loans/import?section=customers')}>
+                        استيراد عملاء
+                    </button>
                     <button className="btn btn-secondary" onClick={exportCSV}> تصدير CSV</button>
                     <button className="btn btn-primary" onClick={() => setShowAdd(true)}>＋ عميل جديد</button>
                 </div>
@@ -329,7 +347,7 @@ export default function CustomersPage() {
                         <div className="db-spinner" />
                         <p>جاري التحميل...</p>
                     </div>
-                ) : customers.length === 0 ? (
+                ) : visibleCustomers.length === 0 ? (
                     <div className="table-empty">
                         <p>لا يوجد عملاء{search ? ' بهذا البحث' : ' بعد'}</p>
                         {!search && <button className="btn btn-primary" onClick={() => setShowAdd(true)}>إضافة أول عميل</button>}
@@ -350,7 +368,7 @@ export default function CustomersPage() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {customers.map((c, i) => {
+                                {visibleCustomers.map((c, i) => {
                                     const statsPending = Boolean(c.stats_pending);
                                     const debt = statsPending ? 0 : parseFloat(c.total_debt || 0);
                                     const status = statsPending ? '' : (c.customer_status || '').toLowerCase();

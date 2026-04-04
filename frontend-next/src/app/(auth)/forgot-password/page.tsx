@@ -21,6 +21,9 @@ export default function ForgotPasswordPage() {
             <p className="text-slate-700 mb-8 font-semibold dark:text-slate-200">
                 أدخل بريدك الإلكتروني وسنرسل لك رابط إعادة التعيين.
             </p>
+            <p className="text-xs text-slate-500 mb-6 font-semibold dark:text-slate-300">
+                إذا لم تصلك الرسالة خلال دقيقة، تحقق من Spam أو جرّب مرة أخرى.
+            </p>
 
             <form onSubmit={handleSubmit} className="w-full space-y-6" noValidate>
                 <div className="space-y-2">

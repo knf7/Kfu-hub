@@ -1,16 +1,16 @@
 'use client';
 
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import * as XLSX from 'xlsx';
-import { loansAPI } from '@/lib/api';
+import { loansAPI, customersAPI } from '@/lib/api';
 import {
     IconUpload, IconCheck, IconAlertTriangle,
     IconX, IconClipboard, IconRefresh, IconDownload
 } from '@/components/layout/icons';
 import './import.css';
 
-const COLUMN_MAP = {
+const LOAN_COLUMN_MAP = {
     nationalId: ['رقم الهوية', 'الهوية', 'هوية', 'national_id', 'id', 'ID'],
     fullName: ['اسم العميل', 'الاسم', 'اسم', 'full_name', 'name'],
     mobileNumber: ['رقم الجوال', 'الجوال', 'جوال', 'mobile', 'phone', 'رقم الهاتف'],
@@ -19,7 +19,7 @@ const COLUMN_MAP = {
     date: ['التاريخ', 'تاريخ', 'date', 'transaction_date', 'تاريخ المعاملة']
 };
 
-type FieldKey = keyof typeof COLUMN_MAP;
+type FieldKey = keyof typeof LOAN_COLUMN_MAP;
 
 const FIELD_LABELS: Record<FieldKey, string> = {
     nationalId: 'رقم الهوية',
@@ -58,9 +58,23 @@ function downloadTemplate() {
     XLSX.writeFile(wb, 'نموذج-رفع-القروض.xlsx');
 }
 
+function downloadCustomersTemplate() {
+    const ws = XLSX.utils.aoa_to_sheet([
+        ['رقم الهوية', 'اسم العميل', 'رقم الجوال', 'البريد الإلكتروني'],
+        ['1234567890', 'محمد أحمد', '0512345678', 'mohammed@example.com'],
+        ['0987654321', 'فاطمة علي', '0598765432', 'fatimah@example.com'],
+    ]);
+    ws['!cols'] = [{ wch: 15 }, { wch: 20 }, { wch: 15 }, { wch: 28 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'عملاء');
+    XLSX.writeFile(wb, 'نموذج-رفع-العملاء.xlsx');
+}
+
 export default function ExcelUploadPage() {
     const router = useRouter();
+    const searchParams = useSearchParams();
     const fileRef = useRef<HTMLInputElement>(null);
+    const [importSection, setImportSection] = useState<'loans' | 'customers'>('loans');
 
     const [file, setFile] = useState<File | null>(null);
     const [sheets, setSheets] = useState<string[]>([]);
@@ -89,6 +103,7 @@ export default function ExcelUploadPage() {
         date: ''
     });
     const [rowEdits, setRowEdits] = useState<Record<string, Partial<Record<FieldKey, string>>>>({});
+    const [customerResult, setCustomerResult] = useState<any>(null);
     const missingRequired = useMemo(
         () => REQUIRED_FIELDS.filter((field) => !columnMap[field]),
         [columnMap]
@@ -99,6 +114,17 @@ export default function ExcelUploadPage() {
     );
 
     const isPremium = true; // For now assuming true or we can check via API/Localstorage
+
+    useEffect(() => {
+        const section = searchParams.get('section');
+        if (section === 'customers') {
+            setImportSection('customers');
+            return;
+        }
+        if (section === 'loans') {
+            setImportSection('loans');
+        }
+    }, [searchParams]);
 
     const parseSheet = useCallback((wb: XLSX.WorkBook, sheetName: string) => {
         const sheet = wb.Sheets[sheetName];
@@ -113,8 +139,8 @@ export default function ExcelUploadPage() {
         setPreview(normalized.slice(0, 8));
 
         const defaults: Record<FieldKey, string> = { ...columnMap };
-        (Object.keys(COLUMN_MAP) as FieldKey[]).forEach((key) => {
-            const found = normalized[0] ? findColumn(normalized[0], COLUMN_MAP[key]) : null;
+        (Object.keys(LOAN_COLUMN_MAP) as FieldKey[]).forEach((key) => {
+            const found = normalized[0] ? findColumn(normalized[0], LOAN_COLUMN_MAP[key]) : null;
             defaults[key] = found || '';
         });
         setColumnMap(defaults);
@@ -131,6 +157,7 @@ export default function ExcelUploadPage() {
         setFile(f);
         setError('');
         setResult(null);
+        setCustomerResult(null);
 
         const reader = new FileReader();
         reader.onload = (e) => {
@@ -162,6 +189,7 @@ export default function ExcelUploadPage() {
     const handleReset = () => {
         setFile(null); setSheets([]); setSelected(''); setWorkbook(null);
         setPreview([]); setHeaders([]); setRowCount(0); setResult(null);
+        setCustomerResult(null);
         setError(''); setProgress(0);
         setRowEdits({});
         if (fileRef.current) fileRef.current.value = '';
@@ -217,15 +245,73 @@ export default function ExcelUploadPage() {
         }
     };
 
+    const handleImportCustomers = async () => {
+        if (!file) return;
+        setLoading(true);
+        setError('');
+        setCustomerResult(null);
+        setProgress(10);
+
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+            if (selectedSheet) formData.append('sheet', selectedSheet);
+            const timer = setInterval(() => setProgress(p => p < 90 ? p + 10 : p), 500);
+            const res = await customersAPI.upload(formData);
+            clearInterval(timer);
+            setProgress(100);
+
+            const s = res.data?.summary || (res as any).summary || {};
+            setCustomerResult({
+                success: s.success || 0,
+                failed: s.failed || 0,
+                errors: s.errors || [],
+                total: s.totalRowsInFile || 0
+            });
+            if ((s.success || 0) > 0) {
+                setTimeout(() => router.push('/dashboard/customers'), 3500);
+            }
+        } catch (err: any) {
+            setProgress(0);
+            setError(err?.response?.data?.error || 'فشل استيراد العملاء. تحقق من صيغة الملف.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const sectionLabel = importSection === 'loans' ? 'القروض' : 'العملاء';
+    const activeResult = importSection === 'loans' ? result : customerResult;
+    const hasResult = Boolean(activeResult);
+
     return (
         <div className="import-page-container">
             <div className="up-header fade-up">
                 <div>
                     <h1 className="up-title">رفع بيانات Excel / CSV</h1>
-                    <p className="up-sub">استيراد القروض والعملاء بشكل دفعي</p>
+                    <p className="up-sub">استيراد {sectionLabel} من الملفات بشكل دفعي</p>
                 </div>
-                <button className="btn btn-outline btn-sm" onClick={downloadTemplate}>
+                <button
+                    className="btn btn-outline btn-sm"
+                    onClick={importSection === 'loans' ? downloadTemplate : downloadCustomersTemplate}
+                >
                     <IconDownload size={15} /> تحميل نموذج
+                </button>
+            </div>
+
+            <div className="import-sections-switch glass-card fade-up">
+                <button
+                    type="button"
+                    className={`section-chip ${importSection === 'loans' ? 'active' : ''}`}
+                    onClick={() => { setImportSection('loans'); handleReset(); }}
+                >
+                    قسم القروض
+                </button>
+                <button
+                    type="button"
+                    className={`section-chip ${importSection === 'customers' ? 'active' : ''}`}
+                    onClick={() => { setImportSection('customers'); handleReset(); }}
+                >
+                    قسم العملاء
                 </button>
             </div>
 
@@ -289,7 +375,7 @@ export default function ExcelUploadPage() {
                 </div>
             )}
 
-            {file && !result && (
+            {file && !hasResult && importSection === 'loans' && (
                 <div className="date-unify-section glass-card fade-up">
                     <div className="unify-header">
                         <label className="unify-toggle">
@@ -350,11 +436,11 @@ export default function ExcelUploadPage() {
                 </div>
             )}
 
-            {preview.length > 0 && (
+            {preview.length > 0 && importSection === 'loans' && (
                 <div className="col-map-card glass-card fade-up">
                     <p className="section-label">مطابقة الأعمدة</p>
                     <div className="map-grid">
-                        {(Object.keys(COLUMN_MAP) as FieldKey[]).map((key) => (
+                        {(Object.keys(LOAN_COLUMN_MAP) as FieldKey[]).map((key) => (
                             <div key={key} className="map-row">
                                 <label className={`map-label ${REQUIRED_FIELDS.includes(key) ? 'required' : ''}`}>
                                     {FIELD_LABELS[key]}
@@ -381,7 +467,7 @@ export default function ExcelUploadPage() {
                 </div>
             )}
 
-            {preview.length > 0 && (
+            {preview.length > 0 && importSection === 'loans' && (
                 <div className="preview-card glass-card fade-up">
                     <div className="preview-header">
                         <p className="section-label">معاينة البيانات</p>
@@ -392,7 +478,7 @@ export default function ExcelUploadPage() {
                             <thead>
                                 <tr>
                                     <th>#</th>
-                                    {(Object.keys(COLUMN_MAP) as FieldKey[]).map((key) => (
+                                    {(Object.keys(LOAN_COLUMN_MAP) as FieldKey[]).map((key) => (
                                         <th key={key}>{FIELD_LABELS[key]}</th>
                                     ))}
                                 </tr>
@@ -401,7 +487,7 @@ export default function ExcelUploadPage() {
                                 {preview.map((row, i) => (
                                     <tr key={i}>
                                         <td className="preview-rownum">{row.__rowNum__ || i + 2}</td>
-                                        {(Object.keys(COLUMN_MAP) as FieldKey[]).map((key) => {
+                                        {(Object.keys(LOAN_COLUMN_MAP) as FieldKey[]).map((key) => {
                                             const rowNumber = String(row.__rowNum__ || i + 2);
                                             const mappedKey = columnMap[key] || '';
                                             const rawValue = mappedKey ? row[mappedKey] : '';
@@ -431,6 +517,38 @@ export default function ExcelUploadPage() {
                 </div>
             )}
 
+            {preview.length > 0 && importSection === 'customers' && (
+                <div className="preview-card glass-card fade-up">
+                    <div className="preview-header">
+                        <p className="section-label">معاينة العملاء</p>
+                        <span className="preview-badge">أول 8 صفوف من أصل {rowCount}</span>
+                    </div>
+                    <p className="up-sub" style={{ marginBottom: 12 }}>
+                        الأعمدة المطلوبة: الاسم، رقم الهوية، رقم الجوال. البريد الإلكتروني اختياري.
+                    </p>
+                    <div className="table-scroll">
+                        <table className="preview-table">
+                            <thead>
+                                <tr>
+                                    {headers.slice(0, 6).map((header) => (
+                                        <th key={header}>{header}</th>
+                                    ))}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {preview.map((row, idx) => (
+                                    <tr key={idx}>
+                                        {headers.slice(0, 6).map((header) => (
+                                            <td key={`${idx}-${header}`}>{String(row[header] ?? '')}</td>
+                                        ))}
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
+
             {error && (
                 <div className="alert alert-error fade-up">
                     <IconAlertTriangle size={18} />
@@ -438,31 +556,37 @@ export default function ExcelUploadPage() {
                 </div>
             )}
 
-            {result && (
-                <div className={`result-card fade-up ${result.success > 0 ? 'result-success' : 'result-error'}`}>
+            {hasResult && (
+                <div className={`result-card fade-up ${activeResult.success > 0 ? 'result-success' : 'result-error'}`}>
                     <div className="result-icon">
-                        {result.success > 0 ? <IconCheck size={26} /> : <IconAlertTriangle size={26} />}
+                        {activeResult.success > 0 ? <IconCheck size={26} /> : <IconAlertTriangle size={26} />}
                     </div>
                     <div className="result-body">
                         <div className="result-title">
-                            {result.success > 0 ? `تم استيراد ${result.success} قرض بنجاح` : 'استيراد جزئي / أخطاء'}
+                            {activeResult.success > 0
+                                ? `تم استيراد ${activeResult.success} ${importSection === 'loans' ? 'قرض' : 'عميل'} بنجاح`
+                                : 'استيراد جزئي / أخطاء'}
                         </div>
-                        {result.failed > 0 && (
-                            <div className="result-sub">فشل {result.failed} صف من أصل {result.total}</div>
+                        {activeResult.failed > 0 && (
+                            <div className="result-sub">فشل {activeResult.failed} صف من أصل {activeResult.total}</div>
                         )}
                     </div>
                 </div>
             )}
 
-            {file && !result && (
+            {file && !hasResult && (
                 <div className="up-actions fade-up">
                     <button className="btn btn-outline" onClick={handleReset} disabled={loading}>
                         <IconRefresh size={16} /> إعادة تحديد
                     </button>
                     <button
                         className="btn btn-primary btn-import"
-                        onClick={handleImport}
-                        disabled={loading || preview.length === 0 || missingRequired.length > 0}
+                        onClick={importSection === 'loans' ? handleImport : handleImportCustomers}
+                        disabled={
+                            loading
+                            || preview.length === 0
+                            || (importSection === 'loans' && missingRequired.length > 0)
+                        }
                     >
                         {loading ? (
                             <>
@@ -472,7 +596,7 @@ export default function ExcelUploadPage() {
                         ) : (
                             <>
                                 <IconUpload size={16} />
-                                بدء رفع {rowCount > 0 ? `${rowCount.toLocaleString('en-US')} صف` : 'البيانات'}
+                                بدء رفع {rowCount > 0 ? `${rowCount.toLocaleString('en-US')} صف` : sectionLabel}
                             </>
                         )}
                     </button>

@@ -5,6 +5,14 @@ const logger = require('./logger');
 
 let transporter = null;
 
+const shouldUseDirectDelivery = () => {
+    if (process.env.NODE_ENV === 'test') return true;
+    if (String(process.env.EMAIL_DELIVERY_MODE || '').toLowerCase() === 'direct') return true;
+    // Serverless runtimes do not run persistent workers reliably.
+    if (process.env.VERCEL) return true;
+    return false;
+};
+
 /**
  * Initialize mailer.
  * In development: uses Ethereal (fake SMTP) and logs preview URL.
@@ -25,7 +33,7 @@ async function getTransporter() {
                 pass: process.env.SMTP_PASS,
             },
         });
-    } else {
+    } else if ((process.env.NODE_ENV || 'development') !== 'production') {
         // Development: Ethereal
         const testAccount = await nodemailer.createTestAccount();
         transporter = nodemailer.createTransport({
@@ -38,10 +46,28 @@ async function getTransporter() {
             },
         });
         logger.info('📧 Ethereal mail account:', testAccount.user);
+    } else {
+        throw new Error('SMTP is not configured. Set SMTP_HOST/SMTP_USER/SMTP_PASS to deliver real emails.');
     }
 
     return transporter;
 }
+
+const dispatchEmail = async (mailOptions, contextLabel) => {
+    if (!shouldUseDirectDelivery()) {
+        const queued = await enqueueEmail(mailOptions);
+        if (queued) {
+            logger.info(`📧 ${contextLabel} queued for: ${mailOptions.to}`);
+            return true;
+        }
+        logger.warn(`⚠️ Queue unavailable for ${contextLabel}; sending directly.`);
+    }
+
+    const transport = await getTransporter();
+    await transport.sendMail(mailOptions);
+    logger.info(`📨 ${contextLabel} sent directly to: ${mailOptions.to}`);
+    return true;
+};
 
 /**
  * Send OTP verification email.
@@ -49,8 +75,6 @@ async function getTransporter() {
  * @param {string} code    6-digit OTP
  */
 async function sendOTPEmail(to, code) {
-    const transport = await getTransporter();
-
     const html = `
     <div dir="rtl" style="font-family: 'Cairo', 'Segoe UI', sans-serif; max-width: 480px; margin: 0 auto; padding: 30px; background: linear-gradient(135deg, #0B1121 0%, #1A2B4A 100%); border-radius: 16px; color: #E2E8F0;">
         <div style="text-align: center; margin-bottom: 24px;">
@@ -74,15 +98,7 @@ async function sendOTPEmail(to, code) {
         html,
     };
 
-    if (process.env.NODE_ENV !== 'test') {
-        await enqueueEmail(mailOptions);
-        logger.info(`📧 OTP Email queued for: ${to}`);
-    } else {
-        // Fallback for local tests without Redis
-        await transport.sendMail(mailOptions);
-    }
-
-    return true;
+    return dispatchEmail(mailOptions, 'OTP email');
 }
 
 /**
@@ -93,8 +109,6 @@ async function sendOTPEmail(to, code) {
  * @param {string} [receiptPath] Optional path to the receipt file to attach
  */
 async function sendAdminNotificationEmail(businessName, email, plan, receiptPath) {
-    const transport = await getTransporter();
-
     // Default to sending to the configured admin email or the SMTP User itself
     const adminEmail = process.env.ADMIN_EMAIL || process.env.SMTP_USER || 'admin@aseel.sa';
 
@@ -125,12 +139,7 @@ async function sendAdminNotificationEmail(businessName, email, plan, receiptPath
         ];
     }
 
-    if (process.env.NODE_ENV !== 'test') {
-        await enqueueEmail(mailOptions);
-        logger.info(`📧 Admin Notification queued for: ${adminEmail}`);
-    } else {
-        await transport.sendMail(mailOptions);
-    }
+    await dispatchEmail(mailOptions, 'admin notification');
 }
 
 /**
@@ -139,8 +148,6 @@ async function sendAdminNotificationEmail(businessName, email, plan, receiptPath
  * @param {string} resetLink 
  */
 async function sendResetPasswordEmail(to, resetLink) {
-    const transport = await getTransporter();
-
     const html = `
     <div dir="rtl" style="font-family: 'Cairo', 'Segoe UI', sans-serif; padding: 30px; background: #0B1121; color: #E2E8F0; text-align: center;">
         <h2 style="color: #FF8C61;">استعادة كلمة المرور 🔐</h2>
@@ -157,14 +164,7 @@ async function sendResetPasswordEmail(to, resetLink) {
         html,
     };
 
-    if (process.env.NODE_ENV !== 'test') {
-        await enqueueEmail(mailOptions);
-        logger.info(`📧 Reset Email queued for: ${to}`);
-    } else {
-        await transport.sendMail(mailOptions);
-    }
-
-    return true;
+    return dispatchEmail(mailOptions, 'password reset email');
 }
 
 module.exports = {

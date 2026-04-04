@@ -1,11 +1,21 @@
 const express = require('express');
 const Joi = require('joi');
+const fs = require('fs');
+const multer = require('multer');
+const csv = require('csv-parser');
+const ExcelJS = require('exceljs');
 const db = require('../config/database');
 const { authenticateToken, injectMerchantId, injectRlsContext, checkPermission } = require('../middleware/auth');
 const { getCache, setCache, clearCacheByPrefix } = require('../utils/cache');
 const { getCustomerColumnFlags } = require('../utils/customerColumns');
+const { checkPlanLimit } = require('../middleware/planLimits');
 
 const router = express.Router();
+
+const upload = multer({
+    dest: '/tmp/uploads/',
+    limits: { fileSize: 30 * 1024 * 1024 }
+});
 
 const RATINGS_TABLE_CACHE_TTL_MS = 1000 * 60 * 5;
 let ratingsTableCache = { value: null, checkedAt: 0 };
@@ -331,6 +341,207 @@ const ensureCustomerRatingsTable = async (client) => {
         fallbackClient.release(true);
     }
 };
+
+const CUSTOMER_UPLOAD_ALLOWED_MIME_TYPES = [
+    'text/csv',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+];
+
+const CUSTOMER_COLUMN_ALIASES = {
+    nationalId: ['رقم الهوية', 'الهوية', 'هوية', 'national_id', 'id', 'ID', 'السجل المدني'],
+    fullName: ['اسم العميل', 'الاسم', 'اسم', 'full_name', 'name', 'العميل'],
+    mobileNumber: ['رقم الجوال', 'الجوال', 'جوال', 'mobile', 'phone', 'رقم الهاتف', 'رقم التواصل'],
+    email: ['email', 'البريد', 'البريد الإلكتروني', 'الايميل', 'الايميل الإلكتروني']
+};
+
+const normalizeDigits = (value) => String(value || '')
+    .replace(/[٠١٢٣٤٥٦٧٨٩]/g, (digit) => String(digit.charCodeAt(0) - 1632))
+    .replace(/[۰۱۲۳۴۵۶۷۸۹]/g, (digit) => String(digit.charCodeAt(0) - 1776));
+
+const normalizeString = (value) => String(value || '').trim();
+
+const normalizeNationalId = (value) => normalizeDigits(value).replace(/\D/g, '');
+const normalizeMobile = (value) => normalizeDigits(value).replace(/\D/g, '');
+const normalizeEmail = (value) => normalizeString(value).toLowerCase();
+
+const findColumnValue = (row, aliases) => {
+    if (!row || typeof row !== 'object') return '';
+    const entries = Object.entries(row);
+    for (const alias of aliases) {
+        const aliasNorm = normalizeString(alias).toLowerCase();
+        const found = entries.find(([key]) => {
+            const keyNorm = normalizeString(key).toLowerCase();
+            return keyNorm === aliasNorm || keyNorm.includes(aliasNorm) || aliasNorm.includes(keyNorm);
+        });
+        if (found) return found[1];
+    }
+    return '';
+};
+
+const parseCustomerRowsFromFile = async (filePath, isCsv, sheetName) => {
+    if (isCsv) {
+        return await new Promise((resolve, reject) => {
+            const rows = [];
+            fs.createReadStream(filePath)
+                .pipe(csv())
+                .on('data', (row) => rows.push(row))
+                .on('end', () => resolve(rows))
+                .on('error', reject);
+        });
+    }
+
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.readFile(filePath);
+    const worksheet = sheetName
+        ? workbook.getWorksheet(sheetName)
+        : workbook.worksheets[0];
+    if (!worksheet) return [];
+
+    const headerRow = worksheet.getRow(1);
+    const headers = [];
+    headerRow.eachCell((cell, colNumber) => {
+        headers[colNumber] = normalizeString(cell.value);
+    });
+
+    const rows = [];
+    worksheet.eachRow((row, rowNumber) => {
+        if (rowNumber === 1) return;
+        const rowObj = {};
+        row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+            const key = headers[colNumber];
+            if (!key) return;
+            rowObj[key] = cell.value ?? '';
+        });
+        rows.push(rowObj);
+    });
+
+    return rows;
+};
+
+const mapCustomerUploadRow = (row) => {
+    const nationalIdRaw = findColumnValue(row, CUSTOMER_COLUMN_ALIASES.nationalId);
+    const fullNameRaw = findColumnValue(row, CUSTOMER_COLUMN_ALIASES.fullName);
+    const mobileRaw = findColumnValue(row, CUSTOMER_COLUMN_ALIASES.mobileNumber);
+    const emailRaw = findColumnValue(row, CUSTOMER_COLUMN_ALIASES.email);
+
+    return {
+        fullName: normalizeString(fullNameRaw),
+        nationalId: normalizeNationalId(nationalIdRaw),
+        mobileNumber: normalizeMobile(mobileRaw),
+        email: normalizeEmail(emailRaw)
+    };
+};
+
+router.post('/upload', checkPermission('can_view_customers'), checkPlanLimit('customers'), upload.single('file'), async (req, res) => {
+    if (!req.file) {
+        return res.status(400).json({ error: 'لم يتم رفع أي ملف' });
+    }
+
+    const filePath = req.file.path;
+    const isCsv = req.file.mimetype === 'text/csv' || req.file.originalname.toLowerCase().endsWith('.csv');
+    const isAllowedMime = CUSTOMER_UPLOAD_ALLOWED_MIME_TYPES.includes(req.file.mimetype)
+        || req.file.originalname.match(/\.(csv|xlsx|xls)$/i);
+
+    if (!isAllowedMime) {
+        if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+        return res.status(400).json({ error: 'صيغة الملف غير مدعومة. استخدم CSV أو Excel.' });
+    }
+
+    const summary = {
+        success: 0,
+        failed: 0,
+        totalRowsInFile: 0,
+        errors: []
+    };
+
+    try {
+        const dbClient = req.dbClient?.query ? req.dbClient : db;
+        const columnFlags = await getCustomerColumnFlags();
+        const hasEmailColumn = Boolean(columnFlags?.hasEmail);
+        const hasDeletedAtColumn = Boolean(columnFlags?.hasDeletedAt);
+        const rows = await parseCustomerRowsFromFile(filePath, isCsv, req.body?.sheet || null);
+        summary.totalRowsInFile = rows.length;
+
+        for (let index = 0; index < rows.length; index += 1) {
+            const rowNumber = index + 2;
+            const mapped = mapCustomerUploadRow(rows[index]);
+
+            if (!mapped.fullName || !mapped.nationalId || !mapped.mobileNumber) {
+                summary.failed += 1;
+                summary.errors.push(`صف ${rowNumber}: الحقول المطلوبة (الاسم، الهوية، الجوال) غير مكتملة`);
+                continue;
+            }
+
+            if (!/^\d{10}$/.test(mapped.nationalId)) {
+                summary.failed += 1;
+                summary.errors.push(`صف ${rowNumber}: رقم الهوية يجب أن يكون 10 أرقام`);
+                continue;
+            }
+
+            if (!/^\d{9,20}$/.test(mapped.mobileNumber)) {
+                summary.failed += 1;
+                summary.errors.push(`صف ${rowNumber}: رقم الجوال غير صالح`);
+                continue;
+            }
+
+            if (mapped.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mapped.email)) {
+                summary.failed += 1;
+                summary.errors.push(`صف ${rowNumber}: البريد الإلكتروني غير صالح`);
+                continue;
+            }
+
+            try {
+                const params = hasEmailColumn
+                    ? [req.merchantId, mapped.fullName, mapped.nationalId, mapped.mobileNumber, mapped.email || null]
+                    : [req.merchantId, mapped.fullName, mapped.nationalId, mapped.mobileNumber];
+                const restoreDeletedClause = hasDeletedAtColumn ? 'deleted_at = NULL,' : '';
+
+                const query = hasEmailColumn
+                    ? `
+                        INSERT INTO customers (merchant_id, full_name, national_id, mobile_number, email)
+                        VALUES ($1, $2, $3, $4, $5)
+                        ON CONFLICT (merchant_id, national_id)
+                        DO UPDATE SET
+                            full_name = EXCLUDED.full_name,
+                            mobile_number = EXCLUDED.mobile_number,
+                            email = COALESCE(EXCLUDED.email, customers.email),
+                            ${restoreDeletedClause}
+                            updated_at = CURRENT_TIMESTAMP
+                    `
+                    : `
+                        INSERT INTO customers (merchant_id, full_name, national_id, mobile_number)
+                        VALUES ($1, $2, $3, $4)
+                        ON CONFLICT (merchant_id, national_id)
+                        DO UPDATE SET
+                            full_name = EXCLUDED.full_name,
+                            mobile_number = EXCLUDED.mobile_number,
+                            ${restoreDeletedClause}
+                            updated_at = CURRENT_TIMESTAMP
+                    `;
+
+                await dbClient.query(query, params);
+                summary.success += 1;
+            } catch (error) {
+                summary.failed += 1;
+                summary.errors.push(`صف ${rowNumber}: فشل الحفظ (${error?.message || 'خطأ غير معروف'})`);
+            }
+        }
+
+        await invalidateReportsCache(req.merchantId);
+        return res.json({
+            message: 'تمت معالجة ملف العملاء',
+            summary
+        });
+    } catch (error) {
+        console.error('Customer upload error:', error);
+        return res.status(500).json({ error: 'فشل استيراد العملاء من الملف' });
+    } finally {
+        if (fs.existsSync(filePath)) {
+            try { fs.unlinkSync(filePath); } catch { }
+        }
+    }
+});
 
 // GET /api/customers - List all customers
 router.get('/', checkPermission('can_view_customers'), async (req, res) => {
@@ -1159,8 +1370,6 @@ router.get('/:id', checkPermission('can_view_customers'), async (req, res) => {
 });
 
 // POST /api/customers - Create new customer
-const { checkPlanLimit } = require('../middleware/planLimits');
-
 router.post('/', checkPermission('can_view_customers'), checkPlanLimit('customers'), async (req, res) => {
     try {
         const { error, value } = customerSchema.validate(req.body);
