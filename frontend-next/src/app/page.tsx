@@ -1,79 +1,71 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft,
-  BarChart3,
   CheckCircle2,
-  CircleDollarSign,
+  Database,
   Linkedin,
+  Landmark,
   Mail,
+  MessageSquareText,
   Phone,
-  Scale,
   ShieldCheck,
-  Sparkles,
-  Users,
-  Zap,
+  Workflow,
 } from 'lucide-react';
 import './landing.css';
 
-type LandingFeature = {
+type OperatingPoint = {
   id: string;
   title: string;
   description: string;
   icon: React.ComponentType<{ size?: number }>;
 };
 
-const TRUST_METRICS = [
-  { id: 'active-cases', label: 'قضايا نشطة', value: '47' },
-  { id: 'collection-rate', label: 'نسبة التحصيل', value: '83.1%' },
-  { id: 'active-clients', label: 'عملاء نشطون', value: '49' },
-  { id: 'monthly-flow', label: 'تدفق شهري', value: '111,531 ر.س' },
+const HERO_BADGES = [
+  'ربط مباشر مع ناجز',
+  'إدخال سريع بالذكاء الاصطناعي',
+  'تقرير شهري قابل للتصدير',
 ];
 
-const FEATURES: LandingFeature[] = [
+const OPERATING_POINTS: OperatingPoint[] = [
   {
-    id: 'najiz',
-    title: 'ربط ناجز في نفس الشاشة',
-    description: 'تحديث مبالغ القضايا، المتبقي، والتحصيل بشكل لحظي بدون تنقل بين أنظمة متعددة.',
-    icon: Scale,
+    id: 'najiz-sync',
+    title: 'مزامنة القضايا تلقائياً',
+    description: 'تحديث المبلغ المرفوع، المتبقي، وحالة السداد من ناجز في نفس اليوم.',
+    icon: Landmark,
   },
   {
     id: 'quick-entry',
-    title: 'إدخال سريع ذكي',
-    description: 'أدخل بيانات القرض والعميل بصيغة محادثة، والنظام يحولها مباشرة إلى سجل منظم.',
-    icon: Zap,
+    title: 'إدخال محادثة أسرع',
+    description: 'اكتب طلبك بطريقة طبيعية والنظام يكوّن العميل والقرض تلقائياً مع التحقق.',
+    icon: MessageSquareText,
   },
   {
-    id: 'analytics',
-    title: 'تحليل مالي واضح',
-    description: 'ملخص شهري يفصل الربح، التحصيل، وحالات التعثر بطريقة تساعد على قرار سريع.',
-    icon: BarChart3,
+    id: 'monthly-report',
+    title: 'ملخص تنفيذي شهري',
+    description: 'قراءة دقيقة للأرباح، التحصيل، والمتأخرات مع ملفات خارجية جاهزة للمشاركة.',
+    icon: Database,
   },
 ];
 
-const WORKFLOW = [
+const WORKFLOW_STEPS = [
   {
-    id: 'wf-1',
-    title: 'إضافة عميل أو استيراد ملف',
-    detail: 'قسم مستقل للعملاء وقسم مستقل للقروض.',
+    id: 'step-1',
+    title: 'أدخل البيانات',
+    detail: 'عميل جديد أو سابق عبر النموذج أو الشات الذكي.',
   },
   {
-    id: 'wf-2',
-    title: 'تسجيل القرض ومتابعة الحالة',
-    detail: 'تنبيهات مباشرة عند التأخير أو تغير الحالة.',
+    id: 'step-2',
+    title: 'تابع الحالة لحظياً',
+    detail: 'سير القضية، السداد، والتنبيهات تظهر مباشرة في لوحة واحدة.',
   },
   {
-    id: 'wf-3',
-    title: 'تحديث قضايا ناجز',
-    detail: 'قياس المتبقي والتحصيل من نفس لوحة التحكم.',
-  },
-  {
-    id: 'wf-4',
-    title: 'تقرير شهري قابل للتصدير',
-    detail: 'CSV/Excel/JSON لتسليم واضح لصاحب القرار.',
+    id: 'step-3',
+    title: 'استخرج التقرير',
+    detail: 'CSV / Excel / JSON مع تفاصيل مهمة لصاحب القرار.',
   },
 ];
 
@@ -89,7 +81,6 @@ function MiniLogo() {
 
 export default function LandingPage() {
   const router = useRouter();
-  const [activeFeature, setActiveFeature] = useState(FEATURES[0].id);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -98,34 +89,30 @@ export default function LandingPage() {
     }
   }, [router]);
 
-  const activeFeatureContent = useMemo(
-    () => FEATURES.find((feature) => feature.id === activeFeature) || FEATURES[0],
-    [activeFeature]
-  );
-
   return (
-    <div dir="rtl" className="landing-page">
-      <header className="landing-nav-wrap">
-        <nav className="landing-nav container">
-          <div className="landing-brand">
+    <div dir="rtl" className="moya-page">
+      <header className="moya-header">
+        <nav className="moya-nav moya-container">
+          <div className="moya-brand">
             <MiniLogo />
             <div>
               <strong>أصيل المالي</strong>
-              <span>نظام إدارة القروض والتحصيل</span>
+              <span>نظام تشغيل القروض والتحصيل</span>
             </div>
           </div>
 
-          <div className="landing-nav-links">
-            <a href="#features">المميزات</a>
+          <div className="moya-links">
+            <a href="#solutions">الحلول</a>
             <a href="#workflow">آلية العمل</a>
+            <a href="#developers">للمطورين</a>
             <a href="#contact">تواصل</a>
           </div>
 
-          <div className="landing-nav-actions">
-            <Link href="/login" className="btn-ghost">
+          <div className="moya-actions">
+            <Link href="/login" className="moya-btn moya-btn-ghost">
               تسجيل الدخول
             </Link>
-            <Link href="/register" className="btn-solid">
+            <Link href="/register" className="moya-btn moya-btn-solid">
               ابدأ مجاناً
               <ArrowLeft size={16} />
             </Link>
@@ -133,113 +120,109 @@ export default function LandingPage() {
         </nav>
       </header>
 
-      <main>
-        <section className="landing-hero container">
-          <div className="hero-copy">
-            <div className="hero-kicker">
-              <Sparkles size={14} />
-              منصة عربية لإدارة القروض وربط ناجز
+      <main className="moya-main">
+        <section className="moya-hero">
+          <div className="moya-hero-beam" aria-hidden="true" />
+          <div className="moya-container moya-hero-grid">
+            <div className="moya-hero-copy">
+              <p className="moya-eyebrow">حل تشغيلي عربي موحّد</p>
+              <h1>نفس فكرة منصات الدفع الحديثة لكن مخصصة لإدارة القروض والتحصيل</h1>
+              <p className="moya-lead">
+                أصيل المالي يجمع الإدخال، المتابعة، وتحديث ناجز في تجربة واضحة وسريعة تساعدك على
+                اتخاذ القرار من أول نظرة.
+              </p>
+              <div className="moya-hero-ctas">
+                <Link href="/register" className="moya-btn moya-btn-solid moya-btn-lg">
+                  ابدأ الآن
+                </Link>
+                <Link href="/pricing" className="moya-btn moya-btn-outline moya-btn-lg">
+                  عرض الباقات
+                </Link>
+              </div>
+              <ul className="moya-badges">
+                {HERO_BADGES.map((badge) => (
+                  <li key={badge}>{badge}</li>
+                ))}
+              </ul>
             </div>
-            <h1>
-              واجهة مالية حديثة
-              <span>تعطيك قرار أسرع وثقة أعلى</span>
-            </h1>
-            <p>
-              صممنا أصيل المالي لتخدم المالك وفريق التشغيل: إدخال أسرع، تتبع أدق، وتحليل شهري
-              مركز على الزبدة الفعلية.
-            </p>
 
-            <div className="hero-actions">
-              <Link href="/register" className="btn-solid large">
-                ابدأ الآن
-              </Link>
-              <Link href="/dashboard/quick-entry" className="btn-outline large">
-                جرّب الإدخال السريع
-              </Link>
-            </div>
-
-            <div className="hero-trust-grid">
-              {TRUST_METRICS.map((item) => (
-                <article key={item.id}>
-                  <p>{item.label}</p>
-                  <strong>{item.value}</strong>
-                </article>
-              ))}
-            </div>
+            <aside className="moya-hero-visual" aria-label="ملخص تشغيلي حي">
+              <div className="moya-orbit">
+                <span className="moya-ring moya-ring-a" />
+                <span className="moya-ring moya-ring-b" />
+                <span className="moya-ring moya-ring-c" />
+                <div className="moya-core">
+                  <strong>83.1%</strong>
+                  <span>نسبة التحصيل</span>
+                </div>
+                <b className="moya-node node-1">ناجز</b>
+                <b className="moya-node node-2">API</b>
+                <b className="moya-node node-3">Excel</b>
+              </div>
+            </aside>
           </div>
-
-          <aside className="hero-live-card">
-            <h2>نظرة تشغيل اليوم</h2>
-            <ul>
-              <li>
-                <CheckCircle2 size={16} />
-                <span>التحديثات من ناجز متزامنة</span>
-                <b className="state up">مستقر</b>
-              </li>
-              <li>
-                <Users size={16} />
-                <span>عملاء متأخرون أكثر من 30 يوم</span>
-                <b className="state warn">8</b>
-              </li>
-              <li>
-                <CircleDollarSign size={16} />
-                <span>تحصيلات اليوم</span>
-                <b className="state up">12,400 ر.س</b>
-              </li>
-              <li>
-                <ShieldCheck size={16} />
-                <span>جودة البيانات</span>
-                <b className="state neutral">98%</b>
-              </li>
-            </ul>
-          </aside>
         </section>
 
-        <section id="features" className="landing-section container">
-          <div className="section-head">
-            <h2>مصممة لطبيعة عملكم اليومية</h2>
-            <p>كل جزء في الواجهة موجه لتقليل الوقت الضائع في المتابعة اليدوية.</p>
+        <section id="solutions" className="moya-section moya-container">
+          <div className="moya-section-head">
+            <h2>حلول تشغيلية على مستوى يومي</h2>
+            <p>بدون زحمة عناصر. كل جزء مصمم ليختصر وقت الفريق ويرفع الدقة.</p>
           </div>
 
-          <div className="feature-layout">
-            <div className="feature-tabs">
-              {FEATURES.map((feature) => {
-                const Icon = feature.icon;
-                const active = activeFeature === feature.id;
-                return (
-                  <button
-                    key={feature.id}
-                    type="button"
-                    className={`feature-tab${active ? ' active' : ''}`}
-                    onClick={() => setActiveFeature(feature.id)}
-                  >
-                    <Icon size={18} />
-                    <span>{feature.title}</span>
-                  </button>
-                );
-              })}
-            </div>
+          <div className="moya-solution-layout">
+            <article className="moya-list-block">
+              <h3>يشغل كل العمليات من شاشة واحدة</h3>
+              <ul>
+                {OPERATING_POINTS.map((point) => {
+                  const Icon = point.icon;
+                  return (
+                    <li key={point.id}>
+                      <div className="moya-list-icon">
+                        <Icon size={18} />
+                      </div>
+                      <div>
+                        <strong>{point.title}</strong>
+                        <p>{point.description}</p>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </article>
 
-            <article className="feature-panel">
-              <div className="feature-panel-icon">
-                <activeFeatureContent.icon size={20} />
-              </div>
-              <h3>{activeFeatureContent.title}</h3>
-              <p>{activeFeatureContent.description}</p>
+            <article className="moya-state-block">
+              <h3>الحالة الحالية الآن</h3>
+              <ul>
+                <li>
+                  <CheckCircle2 size={17} />
+                  <span>مزامنة ناجز اليوم</span>
+                  <b>مستقر</b>
+                </li>
+                <li>
+                  <Workflow size={17} />
+                  <span>طلبات الإدخال السريع</span>
+                  <b>26</b>
+                </li>
+                <li>
+                  <ShieldCheck size={17} />
+                  <span>اكتمال بيانات العملاء</span>
+                  <b>98%</b>
+                </li>
+              </ul>
             </article>
           </div>
         </section>
 
-        <section id="workflow" className="landing-section container">
-          <div className="section-head">
-            <h2>تسلسل واضح من الإدخال إلى التقرير</h2>
-            <p>بدون تعقيد بصري. كل خطوة لها نتيجة مباشرة وقابلة للقياس.</p>
+        <section id="workflow" className="moya-section moya-container">
+          <div className="moya-section-head">
+            <h2>آلية تشغيل واضحة</h2>
+            <p>من إدخال البيانات حتى القرار الشهري في ثلاث خطوات مباشرة.</p>
           </div>
 
-          <div className="workflow-grid">
-            {WORKFLOW.map((step, index) => (
-              <article key={step.id} className="workflow-card">
-                <span className="workflow-index">{String(index + 1).padStart(2, '0')}</span>
+          <div className="moya-flow">
+            {WORKFLOW_STEPS.map((step, index) => (
+              <article key={step.id} className="moya-flow-item">
+                <span className="moya-flow-index">{String(index + 1).padStart(2, '0')}</span>
                 <h3>{step.title}</h3>
                 <p>{step.detail}</p>
               </article>
@@ -247,33 +230,57 @@ export default function LandingPage() {
           </div>
         </section>
 
-        <section className="landing-cta container">
-          <div>
-            <h2>جاهز تبدأ تشغيل فعلي من اليوم؟</h2>
-            <p>سجل الآن وابدأ بإدخال العملاء والقروض ومتابعة ناجز من لوحة واحدة.</p>
+        <section id="developers" className="moya-section moya-container">
+          <div className="moya-dev">
+            <div className="moya-dev-copy">
+              <h2>تكامل تقني سريع</h2>
+              <p>
+                اربط تطبيقك الداخلي أو نظام المحاسبة عبر API واضح، وفعّل الإدخال السريع والتقارير
+                الخارجية بدون تعقيد.
+              </p>
+              <Link href="/contact" className="moya-btn moya-btn-outline">
+                تواصل للتكامل
+              </Link>
+            </div>
+            <pre className="moya-code" aria-label="مثال طلب API">
+              <code>{`POST /api/v1/quick-entry
+{
+  "customer_name": "أحمد سالم",
+  "loan_amount": 12000,
+  "source": "chat",
+  "month": "2026-04"
+}`}</code>
+            </pre>
           </div>
-          <div className="cta-actions">
-            <Link href="/register" className="btn-solid large">
+        </section>
+
+        <section className="moya-final-cta moya-container">
+          <div>
+            <h2>جاهز تنقل التشغيل لمستوى أقوى؟</h2>
+            <p>ابدأ الآن وفعّل تجربة موحّدة مثل المنصات الحديثة لكن مبنية لحالتكم المالية.</p>
+          </div>
+          <div className="moya-final-actions">
+            <Link href="/register" className="moya-btn moya-btn-solid moya-btn-lg">
               إنشاء حساب
             </Link>
-            <Link href="/pricing" className="btn-outline large">
-              عرض الباقات
+            <Link href="/dashboard/quick-entry" className="moya-btn moya-btn-outline moya-btn-lg">
+              تجربة الإدخال السريع
             </Link>
           </div>
         </section>
       </main>
 
-      <footer id="contact" className="landing-footer">
-        <div className="container footer-grid">
-          <div className="footer-brand">
+      <footer id="contact" className="moya-footer">
+        <div className="moya-container moya-footer-grid">
+          <div className="moya-footer-brand">
             <MiniLogo />
             <div>
               <strong>أصيل المالي</strong>
-              <p>منصة تشغيل مالية عربية تركّز على الوضوح والثقة.</p>
+              <p>تشغيل القروض، التحصيل، وناجز في منصة واحدة.</p>
             </div>
           </div>
 
-          <div className="footer-contact">
+          <div className="moya-footer-contact">
             <a href="mailto:info@assal-ksa.com">
               <Mail size={15} />
               info@assal-ksa.com
