@@ -5,7 +5,7 @@ let cachedFlags = null;
 let cachedAt = 0;
 
 const DEFAULT_FLAGS = {
-    hasDeletedAt: false,
+    hasDeletedAt: true,
     hasIsNajizCase: false,
     hasNajizCollectedAmount: false,
     hasPrincipalAmount: false,

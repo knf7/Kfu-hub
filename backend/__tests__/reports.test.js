@@ -43,6 +43,14 @@ describe('Reports / Analytics Controller', () => {
             expect(res.statusCode).toEqual(200);
             expect(res.body.metrics.totalDebt).toBe(5000);
             expect(res.body.metrics.collectionRate).toBe(28.57);
+
+            const executedSql = db.query.mock.calls.map(([sql]) => String(sql));
+            expect(
+                executedSql.some((sql) => /FROM loans[\s\S]*merchant_id = \$1[\s\S]*deleted_at IS NULL[\s\S]*status = 'Active'/.test(sql))
+            ).toBe(true);
+            expect(
+                executedSql.some((sql) => /LEFT JOIN customers c[\s\S]*c\.deleted_at IS NULL/.test(sql))
+            ).toBe(true);
         });
 
         it('should handle zero total debt in collection rate', async () => {
@@ -203,6 +211,11 @@ describe('Reports / Analytics Controller', () => {
             expect(res.body.tracking?.scope?.mode).toBe('from_selected_month');
             expect(res.body.tracking?.scope?.fromDate).toBe('2026-03-01');
             expect(res.body.tracking?.integration?.overlappedCount).toBe(1);
+
+            const executedSql = db.query.mock.calls.map(([sql]) => String(sql));
+            expect(
+                executedSql.some((sql) => /JOIN customers c[\s\S]*c\.deleted_at IS NULL/.test(sql))
+            ).toBe(true);
         });
     });
 
@@ -222,6 +235,10 @@ describe('Reports / Analytics Controller', () => {
 
             expect(res.header['content-type']).toContain('spreadsheetml');
             expect(res.statusCode).toEqual(200);
+
+            const exportQuery = String(db.query.mock.calls[1][0]);
+            expect(exportQuery).toContain('l.deleted_at IS NULL');
+            expect(exportQuery).toContain('c.deleted_at IS NULL');
         });
     });
 });

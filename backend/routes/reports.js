@@ -4,6 +4,7 @@ const db = require('../config/database');
 const { authenticateToken, injectMerchantId, checkPermission } = require('../middleware/auth');
 const { getCache, setCache } = require('../utils/cache');
 const { getLoanColumnFlags } = require('../utils/loanColumns');
+const { getCustomerColumnFlags } = require('../utils/customerColumns');
 
 const router = express.Router();
 
@@ -84,6 +85,16 @@ const buildLoanSqlHelpers = (columnFlags) => {
         najizCollectedValue,
         principalAmount,
         najizRaisedOrder,
+    };
+};
+
+const buildCustomerSqlHelpers = (columnFlags) => {
+    const prefix = (alias = '') => (alias ? `${alias}.` : '');
+    const deletedFilter = (alias = '') =>
+        columnFlags.hasDeletedAt ? `AND ${prefix(alias)}deleted_at IS NULL` : '';
+
+    return {
+        deletedFilter,
     };
 };
 
@@ -288,6 +299,8 @@ router.get('/dashboard', checkPermission('can_view_dashboard'), async (req, res)
         const id = req.merchantId;
         const columnFlags = await getLoanColumnFlags();
         const loanSql = buildLoanSqlHelpers(columnFlags);
+        const customerColumnFlags = await getCustomerColumnFlags();
+        const customerSql = buildCustomerSqlHelpers(customerColumnFlags);
         const isMockedDb = Boolean(db.query && db.query._isMockFunction);
         const forceFresh = req.query._t !== undefined;
         const cacheKey = `reports:dashboard:${id}`;
@@ -318,7 +331,10 @@ router.get('/dashboard', checkPermission('can_view_dashboard'), async (req, res)
         ] = await runBatchQueries(queryClient, [
             [
                 `SELECT COALESCE(SUM(amount), 0) AS total_debt
-                 FROM loans WHERE merchant_id = $1 AND status = 'Active'`,
+                 FROM loans
+                 WHERE merchant_id = $1
+                   ${loanSql.deletedFilter()}
+                   AND status = 'Active'`,
                 [id]
             ],
             [
@@ -342,8 +358,12 @@ router.get('/dashboard', checkPermission('can_view_dashboard'), async (req, res)
                    SELECT c.id,
                      COUNT(CASE WHEN l.status = 'Active' THEN 1 END) AS total_active
                    FROM customers c
-                   LEFT JOIN loans l ON l.customer_id = c.id AND l.merchant_id = c.merchant_id
+                   LEFT JOIN loans l
+                     ON l.customer_id = c.id
+                    AND l.merchant_id = c.merchant_id
+                    ${loanSql.deletedFilter('l')}
                    WHERE c.merchant_id = $1
+                     ${customerSql.deletedFilter('c')}
                    GROUP BY c.id
                  ) sub`,
                 [id]
@@ -352,6 +372,7 @@ router.get('/dashboard', checkPermission('can_view_dashboard'), async (req, res)
                 `SELECT COUNT(*) AS count
                  FROM loans
                  WHERE merchant_id = $1
+                   ${loanSql.deletedFilter()}
                    AND DATE_TRUNC('month', created_at) = DATE_TRUNC('month', CURRENT_DATE)`,
                 [id]
             ],
@@ -367,13 +388,16 @@ router.get('/dashboard', checkPermission('can_view_dashboard'), async (req, res)
                      END
                    ), 0) AS paid,
                    COALESCE(SUM(amount), 0) AS total
-                 FROM loans WHERE merchant_id = $1`,
+                 FROM loans
+                 WHERE merchant_id = $1
+                   ${loanSql.deletedFilter()}`,
                 [id]
             ],
             [
                 `SELECT COUNT(DISTINCT customer_id) AS overdue_count
                  FROM loans
                  WHERE merchant_id = $1
+                   ${loanSql.deletedFilter()}
                    AND status = 'Active'
                    AND transaction_date < CURRENT_DATE - INTERVAL '30 days'`,
                 [id]
@@ -382,7 +406,11 @@ router.get('/dashboard', checkPermission('can_view_dashboard'), async (req, res)
                 isMockedDb
                     ? Promise.resolve({ rows: [{ count: 0 }] })
                     : queryClient.query(
-                        `SELECT COUNT(*) AS count FROM loans WHERE merchant_id = $1 AND status = 'Raised'`,
+                        `SELECT COUNT(*) AS count
+                         FROM loans
+                         WHERE merchant_id = $1
+                           ${loanSql.deletedFilter()}
+                           AND status = 'Raised'`,
                         [id]
                     )
             ),
@@ -390,8 +418,12 @@ router.get('/dashboard', checkPermission('can_view_dashboard'), async (req, res)
                 `SELECT l.id, l.amount, l.status, l.created_at, l.transaction_date,
                         c.full_name AS customer_name, c.mobile_number
                  FROM loans l
-                 LEFT JOIN customers c ON l.customer_id = c.id
+                 LEFT JOIN customers c
+                   ON l.customer_id = c.id
+                  AND c.merchant_id = l.merchant_id
+                  ${customerSql.deletedFilter('c')}
                  WHERE l.merchant_id = $1
+                   ${loanSql.deletedFilter('l')}
                  ORDER BY l.created_at DESC
                  LIMIT 10`,
                 [id]
@@ -454,7 +486,10 @@ router.get('/dashboard', checkPermission('can_view_dashboard'), async (req, res)
                    c.full_name AS customer_name,
                    c.national_id
                  FROM loans l
-                 LEFT JOIN customers c ON l.customer_id = c.id
+                 LEFT JOIN customers c
+                   ON l.customer_id = c.id
+                  AND c.merchant_id = l.merchant_id
+                  ${customerSql.deletedFilter('c')}
                  WHERE l.merchant_id = $1
                    ${loanSql.deletedFilter('l')}
                    AND (
@@ -531,6 +566,8 @@ router.get('/analytics', checkPermission('can_view_analytics'), async (req, res)
         const id = req.merchantId;
         const columnFlags = await getLoanColumnFlags();
         const loanSql = buildLoanSqlHelpers(columnFlags);
+        const customerColumnFlags = await getCustomerColumnFlags();
+        const customerSql = buildCustomerSqlHelpers(customerColumnFlags);
         const isMockedDb = Boolean(db.query && db.query._isMockFunction);
         const forceFresh = req.query._t !== undefined;
         const interval = req.query.interval || 'month';
@@ -606,8 +643,13 @@ router.get('/analytics', checkPermission('can_view_analytics'), async (req, res)
                         SUM(l.amount) AS total_debt,
                         COUNT(l.id)   AS loan_count
                  FROM customers c
-                 JOIN loans l ON l.customer_id = c.id
-                 WHERE c.merchant_id = $1 AND l.status = 'Active' ${loanSql.deletedFilter('l')}
+                 JOIN loans l
+                   ON l.customer_id = c.id
+                  AND l.merchant_id = c.merchant_id
+                 WHERE c.merchant_id = $1
+                   ${customerSql.deletedFilter('c')}
+                   AND l.status = 'Active'
+                   ${loanSql.deletedFilter('l')}
                  GROUP BY c.id, c.full_name, c.mobile_number
                  ORDER BY total_debt DESC
                  LIMIT 10`,
@@ -744,6 +786,8 @@ router.get('/monthly-summary', checkPermission('can_view_analytics'), async (req
 
         const columnFlags = await getLoanColumnFlags();
         const loanSql = buildLoanSqlHelpers(columnFlags);
+        const customerColumnFlags = await getCustomerColumnFlags();
+        const customerSql = buildCustomerSqlHelpers(customerColumnFlags);
         const isMockedDb = Boolean(db.query && db.query._isMockFunction);
         const forceFresh = req.query._t !== undefined;
         const cacheKey = `reports:monthly:${id}:${monthlyWindow.year}-${String(monthlyWindow.month).padStart(2, '0')}`;
@@ -827,9 +871,12 @@ router.get('/monthly-summary', checkPermission('can_view_analytics'), async (req
                    COALESCE(SUM(l.amount), 0) AS total_amount,
                    COALESCE(SUM(CASE WHEN l.status = 'Paid' THEN l.amount ELSE 0 END), 0) AS paid_amount
                  FROM loans l
-                 JOIN customers c ON c.id = l.customer_id
+                 JOIN customers c
+                   ON c.id = l.customer_id
+                  AND c.merchant_id = l.merchant_id
                  WHERE l.merchant_id = $1
                    ${loanSql.deletedFilter('l')}
+                   ${customerSql.deletedFilter('c')}
                    AND l.transaction_date >= $2
                    AND l.transaction_date < $3
                  GROUP BY c.id, c.full_name, c.mobile_number
@@ -886,9 +933,12 @@ router.get('/monthly-summary', checkPermission('can_view_analytics'), async (req
                    l.najiz_status,
                    l.transaction_date
                  FROM loans l
-                 JOIN customers c ON c.id = l.customer_id
+                 JOIN customers c
+                   ON c.id = l.customer_id
+                  AND c.merchant_id = l.merchant_id
                  WHERE l.merchant_id = $1
                    ${loanSql.deletedFilter('l')}
+                   ${customerSql.deletedFilter('c')}
                    AND l.transaction_date >= $2
                    AND (
                      (${loanSql.isNajizCase('l')})
@@ -915,9 +965,12 @@ router.get('/monthly-summary', checkPermission('can_view_analytics'), async (req
                      OR l.najiz_case_number IS NOT NULL
                    ) AS has_najiz_case
                  FROM loans l
-                 JOIN customers c ON c.id = l.customer_id
+                 JOIN customers c
+                   ON c.id = l.customer_id
+                  AND c.merchant_id = l.merchant_id
                  WHERE l.merchant_id = $1
                    ${loanSql.deletedFilter('l')}
+                   ${customerSql.deletedFilter('c')}
                    AND l.transaction_date >= $2
                    AND l.status NOT IN ('Paid', 'Cancelled')
                  ORDER BY l.transaction_date DESC
@@ -1072,6 +1125,10 @@ router.get('/ai-analysis', checkPermission('can_view_analytics'), async (req, re
         const id = req.merchantId;
         const isMockedDb = Boolean(db.query && db.query._isMockFunction);
         const forceFresh = req.query._t !== undefined;
+        const loanColumnFlags = await getLoanColumnFlags();
+        const loanSql = buildLoanSqlHelpers(loanColumnFlags);
+        const customerColumnFlags = await getCustomerColumnFlags();
+        const customerSql = buildCustomerSqlHelpers(customerColumnFlags);
 
         // 1. Verify SaaS Tier (must be enterprise)
         const merchantRes = await db.query('SELECT subscription_plan FROM merchants WHERE id = $1', [id]);
@@ -1116,7 +1173,9 @@ router.get('/ai-analysis', checkPermission('can_view_analytics'), async (req, re
                    COUNT(CASE WHEN status='Paid'      THEN 1 END)                        AS paid_count,
                    COUNT(CASE WHEN status='Active'    THEN 1 END)                        AS active_count,
                    COUNT(CASE WHEN status='Cancelled' THEN 1 END)                        AS cancelled_count
-                 FROM loans WHERE merchant_id = $1`,
+                 FROM loans
+                 WHERE merchant_id = $1
+                   ${loanSql.deletedFilter()}`,
                 [id]
             ],
             [
@@ -1126,6 +1185,7 @@ router.get('/ai-analysis', checkPermission('can_view_analytics'), async (req, re
                    COUNT(*)    AS count
                  FROM loans
                  WHERE merchant_id = $1
+                   ${loanSql.deletedFilter()}
                    AND transaction_date >= CURRENT_DATE - INTERVAL '6 months'
                  GROUP BY DATE_TRUNC('month', transaction_date)
                  ORDER BY month DESC
@@ -1137,8 +1197,12 @@ router.get('/ai-analysis', checkPermission('can_view_analytics'), async (req, re
                         SUM(l.amount) AS debt,
                         MAX(EXTRACT(DAY FROM CURRENT_DATE - l.transaction_date))::int AS days_overdue
                  FROM loans l
-                 JOIN customers c ON l.customer_id = c.id
+                 JOIN customers c
+                   ON l.customer_id = c.id
+                  AND c.merchant_id = l.merchant_id
                  WHERE l.merchant_id = $1
+                   ${loanSql.deletedFilter('l')}
+                   ${customerSql.deletedFilter('c')}
                    AND l.status = 'Active'
                    AND l.transaction_date < CURRENT_DATE - INTERVAL '30 days'
                  GROUP BY c.id, c.full_name, c.mobile_number
@@ -1152,6 +1216,7 @@ router.get('/ai-analysis', checkPermission('can_view_analytics'), async (req, re
                    SUM(amount) AS total
                  FROM loans
                  WHERE merchant_id = $1
+                   ${loanSql.deletedFilter()}
                  GROUP BY DATE_TRUNC('month', transaction_date)
                  ORDER BY total DESC
                  LIMIT 1`,
@@ -1163,7 +1228,10 @@ router.get('/ai-analysis', checkPermission('can_view_analytics'), async (req, re
                    COALESCE(MAX(amount), 0)         AS max_amount,
                    COALESCE(MIN(amount), 0)         AS min_amount,
                    COALESCE(STDDEV(amount), 0)      AS stddev_amount
-                 FROM loans WHERE merchant_id = $1 AND status != 'Cancelled'`,
+                 FROM loans
+                 WHERE merchant_id = $1
+                   ${loanSql.deletedFilter()}
+                   AND status != 'Cancelled'`,
                 [id]
             ],
             [
@@ -1175,7 +1243,9 @@ router.get('/ai-analysis', checkPermission('can_view_analytics'), async (req, re
                  FROM (
                    SELECT amount, EXTRACT(DAY FROM CURRENT_DATE - transaction_date)::int AS age_days
                    FROM loans
-                   WHERE merchant_id = $1 AND status = 'Active'
+                   WHERE merchant_id = $1
+                     ${loanSql.deletedFilter()}
+                     AND status = 'Active'
                  ) sub`,
                 [id]
             ]
@@ -1411,6 +1481,10 @@ router.get('/ai-analysis', checkPermission('can_view_analytics'), async (req, re
 // ─────────────────────────────────────────────────────────
 router.get('/export-yearly-workbook', checkPermission('can_view_loans'), async (req, res) => {
     try {
+        const loanColumnFlags = await getLoanColumnFlags();
+        const loanSql = buildLoanSqlHelpers(loanColumnFlags);
+        const customerColumnFlags = await getCustomerColumnFlags();
+        const customerSql = buildCustomerSqlHelpers(customerColumnFlags);
         const nowYear = new Date().getUTCFullYear();
         const year = Number.parseInt(String(req.query?.year || nowYear), 10);
         if (!Number.isFinite(year) || year < 2000 || year > 2100) {
@@ -1424,9 +1498,12 @@ router.get('/export-yearly-workbook', checkPermission('can_view_loans'), async (
             `SELECT l.id, c.full_name, c.national_id, c.mobile_number,
                     l.amount, l.receipt_number, l.status, l.transaction_date, l.created_at
              FROM loans l
-             LEFT JOIN customers c ON l.customer_id = c.id
+             LEFT JOIN customers c
+               ON l.customer_id = c.id
+              AND c.merchant_id = l.merchant_id
+              ${customerSql.deletedFilter('c')}
              WHERE l.merchant_id = $1
-               AND l.deleted_at IS NULL
+               ${loanSql.deletedFilter('l')}
                AND l.transaction_date >= $2
                AND l.transaction_date <= $3
              ORDER BY l.transaction_date ASC`,
@@ -1540,10 +1617,17 @@ router.get('/export-yearly-workbook', checkPermission('can_view_loans'), async (
 // ─────────────────────────────────────────────────────────
 router.get('/export', checkPermission('can_view_loans'), async (req, res) => {
     try {
+        const loanColumnFlags = await getLoanColumnFlags();
+        const customerColumnFlags = await getCustomerColumnFlags();
+        const customerSql = buildCustomerSqlHelpers(customerColumnFlags);
         let { startDate, endDate, status } = req.query;
         const conditions = ['l.merchant_id = $1'];
         const params = [req.merchantId];
         let idx = 2;
+
+        if (loanColumnFlags.hasDeletedAt) {
+            conditions.push('l.deleted_at IS NULL');
+        }
 
         // If no dates are provided, default to the current month
         if (!startDate && !endDate) {
@@ -1560,7 +1644,10 @@ router.get('/export', checkPermission('can_view_loans'), async (req, res) => {
             `SELECT l.id, c.full_name, c.national_id, c.mobile_number,
                     l.amount, l.receipt_number, l.status, l.transaction_date, l.created_at
              FROM loans l
-             LEFT JOIN customers c ON l.customer_id = c.id
+             LEFT JOIN customers c
+               ON l.customer_id = c.id
+              AND c.merchant_id = l.merchant_id
+              ${customerSql.deletedFilter('c')}
              WHERE ${conditions.join(' AND ')}
              ORDER BY l.transaction_date DESC`,
             params
