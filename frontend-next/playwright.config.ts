@@ -2,6 +2,7 @@ import { defineConfig, devices } from '@playwright/test';
 
 const frontendPort = Number(process.env.E2E_FRONTEND_PORT || 3000);
 const baseURL = process.env.E2E_BASE_URL || `http://localhost:${frontendPort}`;
+const defaultWebServerCommand = process.env.E2E_WEB_SERVER_CMD || `npm run start -- --hostname localhost --port ${frontendPort}`;
 
 export default defineConfig({
   testDir: './e2e',
@@ -30,7 +31,7 @@ export default defineConfig({
   webServer: process.env.E2E_BASE_URL
     ? undefined
     : {
-      command: `npm run dev -- --hostname localhost --port ${frontendPort}`,
+      command: defaultWebServerCommand,
       url: baseURL,
       timeout: 180_000,
       reuseExistingServer: true,

@@ -301,9 +301,9 @@ export default function MonthlyReportPage() {
   };
 
   const renderEmptyState = () => (
-    <div className="mr-empty-state">
+    <div className="mr-empty-state" data-test="monthly-empty-state">
       <p>لا توجد بيانات متاحة للشهر المختار.</p>
-      <button type="button" onClick={() => fetchReport(true)} disabled={loading || exporting !== null}>
+      <button type="button" data-test="monthly-retry" onClick={() => fetchReport(true)} disabled={loading || exporting !== null}>
         إعادة المحاولة
       </button>
     </div>
@@ -451,7 +451,7 @@ export default function MonthlyReportPage() {
   };
 
   return (
-    <div className="mr-page">
+    <div className="mr-page" data-test="monthly-report-page">
       <header className="mr-hero">
         <div>
           <h1>التقرير الشهري الذكي</h1>
@@ -496,24 +496,36 @@ export default function MonthlyReportPage() {
               ))}
             </select>
           </label>
-          <button type="button" className="mr-refresh-btn" onClick={() => fetchReport(true)} disabled={loading || exporting !== null}>
+          <button
+            type="button"
+            className="mr-refresh-btn"
+            data-test="monthly-generate"
+            onClick={() => fetchReport(true)}
+            disabled={loading || exporting !== null}
+          >
             <IconRefresh size={15} />
             <span>{loading ? 'جاري التوليد...' : 'توليد التقرير'}</span>
           </button>
           <div className="mr-export-buttons">
-            <button type="button" className="mr-export-btn" onClick={handleExportXlsx} disabled={loading || exporting !== null}>
+            <button type="button" className="mr-export-btn" data-test="export-excel" onClick={handleExportXlsx} disabled={loading || exporting !== null}>
               <IconDownload size={14} />
               <span>{exporting === 'xlsx' ? 'جاري التصدير...' : 'Excel'}</span>
             </button>
-            <button type="button" className="mr-export-btn" onClick={handleExportCsv} disabled={loading || exporting !== null}>
+            <button type="button" className="mr-export-btn" data-test="export-csv" onClick={handleExportCsv} disabled={loading || exporting !== null}>
               <IconDownload size={14} />
               <span>{exporting === 'csv' ? 'جاري التصدير...' : 'CSV'}</span>
             </button>
-            <button type="button" className="mr-export-btn" onClick={handleExportJson} disabled={loading || exporting !== null}>
+            <button type="button" className="mr-export-btn" data-test="export-json" onClick={handleExportJson} disabled={loading || exporting !== null}>
               <IconDownload size={14} />
               <span>{exporting === 'json' ? 'جاري التصدير...' : 'JSON'}</span>
             </button>
-            <button type="button" className="mr-export-btn yearly" onClick={handleExportYearlyWorkbook} disabled={loading || exporting !== null}>
+            <button
+              type="button"
+              className="mr-export-btn yearly"
+              data-test="export-yearly-workbook"
+              onClick={handleExportYearlyWorkbook}
+              disabled={loading || exporting !== null}
+            >
               <IconDownload size={14} />
               <span>{exporting === 'yearly' ? 'جاري التصدير...' : `Workbook ${year}`}</span>
             </button>

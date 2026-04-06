@@ -1,17 +1,9 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  Area,
-  AreaChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
 import {
   AlertTriangle,
   ArrowUpRight,
@@ -29,8 +21,7 @@ import {
   Wallet,
 } from 'lucide-react';
 import { appToast } from '@/components/ui/sonner';
-import { loansAPI, reportsAPI, DASHBOARD_DIRTY_KEY } from '@/lib/api';
-import { useDataSync } from '@/hooks/useDataSync';
+import { dashboardAPI, DASHBOARD_DIRTY_KEY } from '@/lib/dashboard-api';
 import './dashboard-refactored.css';
 
 type DashboardMetrics = {
@@ -145,6 +136,15 @@ const CHART_INTERVALS: Array<{ id: 'week' | 'month'; label: string }> = [
   { id: 'month', label: 'شهري' },
 ];
 
+const DashboardChartSection = dynamic(() => import('./components/DashboardChartSection'), {
+  ssr: false,
+  loading: () => (
+    <section className="dbx-card dbx-chart-card dbx-chart-loading">
+      <div className="dbx-loading-pulse" />
+    </section>
+  ),
+});
+
 const toNumber = (value: unknown) => {
   const num = Number(value);
   return Number.isFinite(num) ? num : 0;
@@ -175,6 +175,7 @@ export default function DashboardPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [chartInterval, setChartInterval] = useState<'week' | 'month'>('week');
+  const [loadHeavySections, setLoadHeavySections] = useState(false);
   const [refreshToken, setRefreshToken] = useState(0);
   const notifiedRef = useRef({ summaryError: false, analyticsError: false, aiError: false, overdue: false });
 
@@ -202,7 +203,7 @@ export default function DashboardPage() {
   const summaryQuery = useQuery<DashboardSummary>({
     queryKey: ['dashboard', 'summary', refreshToken],
     queryFn: async () => {
-      const response = await reportsAPI.getDashboard(refreshToken ? { _t: refreshToken } : {});
+      const response = await dashboardAPI.getDashboard<DashboardSummary>(refreshToken ? { _t: refreshToken } : {});
       return ((response as { data?: DashboardSummary })?.data ?? response) as DashboardSummary;
     },
     staleTime: 1000 * 60 * 2,
@@ -213,34 +214,26 @@ export default function DashboardPage() {
   const analyticsQuery = useQuery<AnalyticsResponse>({
     queryKey: ['dashboard', 'analytics', chartInterval, refreshToken],
     queryFn: async () => {
-      const response = await reportsAPI.getAnalytics({ interval: chartInterval, _t: refreshToken || undefined });
+      const response = await dashboardAPI.getAnalytics<AnalyticsResponse>({ interval: chartInterval, _t: refreshToken || undefined });
       return ((response as { data?: AnalyticsResponse })?.data ?? response) as AnalyticsResponse;
     },
     staleTime: 1000 * 60 * 2,
     refetchOnWindowFocus: false,
     retry: 1,
+    enabled: loadHeavySections,
   });
 
   const aiQuery = useQuery<AIResponse>({
     queryKey: ['dashboard', 'ai', refreshToken],
     queryFn: async () => {
-      const response = await reportsAPI.getAIAnalysis(refreshToken ? { _t: refreshToken } : {});
+      const response = await dashboardAPI.getAIAnalysis<AIResponse>(refreshToken ? { _t: refreshToken } : {});
       return ((response as { data?: AIResponse })?.data ?? response) as AIResponse;
     },
     staleTime: 1000 * 60 * 2,
     refetchOnWindowFocus: false,
     retry: false,
+    enabled: loadHeavySections,
   });
-
-  useDataSync(
-    () => {
-      const token = Date.now();
-      setRefreshToken(token);
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      void summaryQuery.refetch();
-    },
-    { scopes: ['dashboard', 'reports', 'loans', 'customers', 'najiz'], debounceMs: 250 }
-  );
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -256,6 +249,27 @@ export default function DashboardPage() {
       // ignore localStorage failures
     }
   }, [aiQuery, analyticsQuery, queryClient, summaryQuery]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const lazyLoad = () => setLoadHeavySections(true);
+    const win = window as Window & {
+      requestIdleCallback?: (cb: () => void, options?: { timeout?: number }) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+
+    if (typeof win.requestIdleCallback === 'function') {
+      const idleId = win.requestIdleCallback(lazyLoad, { timeout: 900 });
+      return () => {
+        if (typeof win.cancelIdleCallback === 'function') {
+          win.cancelIdleCallback(idleId);
+        }
+      };
+    }
+
+    const timeoutId = window.setTimeout(lazyLoad, 350);
+    return () => window.clearTimeout(timeoutId);
+  }, []);
 
   useEffect(() => {
     if (summaryQuery.isError && !notifiedRef.current.summaryError) {
@@ -391,7 +405,7 @@ export default function DashboardPage() {
 
   const handleExportCSV = useCallback(async () => {
     try {
-      const response = await loansAPI.getAll({ limit: 9999 });
+      const response = await dashboardAPI.getLoans<{ loans?: Array<Record<string, unknown>> }>({ limit: 9999 });
       const payload = ((response as { data?: { loans?: Array<Record<string, unknown>> } })?.data ?? response) as {
         loans?: Array<Record<string, unknown>>;
       };
@@ -440,17 +454,23 @@ export default function DashboardPage() {
     }
   }, []);
 
-  if (summaryQuery.isLoading && !summaryQuery.data) {
+  const isSummaryLoading = summaryQuery.isLoading && !summaryQuery.data;
+
+  if (summaryQuery.isError && !summaryQuery.data) {
     return (
-      <div className="dbx-loading">
-        <div className="dbx-spinner" />
-        <p>جاري تجهيز لوحة التحكم...</p>
+      <div className="dbx-error-state" data-test="error-state">
+        <AlertTriangle size={34} />
+        <h2>تعذر تحميل لوحة التحكم</h2>
+        <p>حدث خلل أثناء جلب البيانات. يمكنك إعادة المحاولة الآن.</p>
+        <button type="button" className="dbx-btn dbx-btn-primary" data-test="retry-dashboard" onClick={handleRefresh}>
+          <TrendingUp size={16} /> إعادة المحاولة
+        </button>
       </div>
     );
   }
 
   return (
-    <div className="dbx-page">
+    <div className="dbx-page" data-test="dashboard-page">
       <header className="dbx-header">
         <div className="dbx-header-content">
           <div className="dbx-breadcrumb">
@@ -463,30 +483,39 @@ export default function DashboardPage() {
             {todayLabel}
             {merchantName ? <span className="dbx-store"> • {merchantName}</span> : null}
           </p>
+          {isSummaryLoading ? <p className="dbx-subtitle dbx-subtle-loading">جاري تحديث الملخص...</p> : null}
         </div>
 
         <div className="dbx-header-actions">
-          <button className="dbx-btn dbx-btn-secondary" onClick={handleRefresh}>
+          <button className="dbx-btn dbx-btn-secondary" data-test="dashboard-refresh" onClick={handleRefresh}>
             <TrendingUp size={17} /> تحديث
           </button>
-          <button className="dbx-btn dbx-btn-secondary" onClick={handleExportCSV}>
+          <button className="dbx-btn dbx-btn-secondary" data-test="dashboard-export-csv" onClick={handleExportCSV}>
             <Download size={17} /> تصدير CSV
           </button>
-          <button className="dbx-btn dbx-btn-secondary" onClick={() => router.push('/dashboard/monthly-report')}>
+          <button
+            className="dbx-btn dbx-btn-secondary"
+            data-test="open-monthly-report"
+            onClick={() => router.push('/dashboard/monthly-report')}
+          >
             <BarChart3 size={17} /> التقرير الشهري
           </button>
-          <button className="dbx-btn dbx-btn-primary" onClick={() => router.push('/dashboard/loans/new')}>
+          <button className="dbx-btn dbx-btn-primary" data-test="open-new-loan" onClick={() => router.push('/dashboard/loans/new')}>
             <Plus size={17} /> إضافة قرض
           </button>
         </div>
       </header>
 
       <section className="dbx-kpi-section">
-        <div className="dbx-kpi-grid">
+        <div className="dbx-kpi-grid" data-test="kpi-grid">
           {kpis.map((kpi) => {
             const Icon = kpi.icon;
             return (
-              <article key={kpi.id} className={`dbx-kpi-card dbx-kpi-${kpi.accent}`}>
+              <article
+                key={kpi.id}
+                className={`dbx-kpi-card dbx-kpi-${kpi.accent}${isSummaryLoading ? ' is-loading' : ''}`}
+                data-test="kpi-card"
+              >
                 <div className={`dbx-kpi-icon dbx-kpi-icon-${kpi.accent}`}>
                   <Icon size={21} />
                 </div>
@@ -507,7 +536,7 @@ export default function DashboardPage() {
             <p>اختصارات تشغيل يومية</p>
           </div>
           <div className="dbx-quick-grid">
-            <button className="dbx-quick-item" onClick={() => router.push('/dashboard/quick-entry')}>
+            <button className="dbx-quick-item" data-test="quick-entry-action" onClick={() => router.push('/dashboard/quick-entry')}>
               <Rocket size={20} />
               <strong>Rabbit الإدخال السريع</strong>
               <span>إدخال قرض أو عميل عبر الشات</span>
@@ -561,76 +590,18 @@ export default function DashboardPage() {
         </article>
       </section>
 
-      <section className="dbx-card dbx-chart-card">
-        <div className="dbx-card-head dbx-chart-head">
-          <div>
-            <h2>حركة المبالغ</h2>
-            <p>الصرف والتحصيل عبر الزمن</p>
-          </div>
-          <div className="dbx-intervals">
-            {CHART_INTERVALS.map((interval) => (
-              <button
-                key={interval.id}
-                type="button"
-                className={chartInterval === interval.id ? 'active' : ''}
-                onClick={() => setChartInterval(interval.id)}
-              >
-                {interval.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="dbx-chart-area">
-          {chartData.length === 0 ? (
-            <div className="dbx-empty">
-              <BarChart3 size={34} />
-              <p>لا توجد بيانات رسم لهذا النطاق.</p>
-            </div>
-          ) : (
-            <ResponsiveContainer width="100%" height={320}>
-              <AreaChart data={chartData} margin={{ top: 12, right: 8, left: 0, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="dbxArea" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="var(--coral)" stopOpacity={0.34} />
-                    <stop offset="100%" stopColor="var(--coral)" stopOpacity={0.04} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.28)" />
-                <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#94a3b8' }} />
-                <YAxis
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fontSize: 11, fill: '#94a3b8' }}
-                  tickFormatter={(v: number) => (v >= 1000 ? `${Math.round(v / 1000)}k` : String(v))}
-                />
-                <Tooltip
-                  contentStyle={{
-                    background: 'rgba(15,23,42,0.94)',
-                    border: '1px solid rgba(59,130,246,0.25)',
-                    borderRadius: 12,
-                    color: '#f8fafc',
-                    fontSize: 12,
-                  }}
-                  formatter={(value: number | string | undefined) => [
-                    `${toNumber(value).toLocaleString('en-US')} ﷼`,
-                    'القيمة',
-                  ]}
-                />
-                <Area
-                  dataKey="amount"
-                  type="monotone"
-                  stroke="var(--coral)"
-                  strokeWidth={2.5}
-                  fill="url(#dbxArea)"
-                  dot={{ r: 3, fill: 'var(--coral)' }}
-                  activeDot={{ r: 5 }}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          )}
-        </div>
-      </section>
+      {loadHeavySections ? (
+        <DashboardChartSection
+          chartData={chartData}
+          chartInterval={chartInterval}
+          intervals={CHART_INTERVALS}
+          onIntervalChange={setChartInterval}
+        />
+      ) : (
+        <section className="dbx-card dbx-chart-card dbx-chart-loading">
+          <div className="dbx-loading-pulse" />
+        </section>
+      )}
 
       <section className="dbx-grid-2">
         <article className="dbx-card">

@@ -1,5 +1,6 @@
 {
+  "regions": ["syd1"],
   "crons": [
-    { "path": "/api/health", "schedule": "*/1 * * * *" }
+    { "path": "/api/health", "schedule": "0 0 * * *" }
   ]
 }

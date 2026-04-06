@@ -32,6 +32,30 @@
   text-align: center;
 }
 
+.dbx-error-state {
+  min-height: 55vh;
+  display: grid;
+  place-items: center;
+  gap: 12px;
+  text-align: center;
+  border: 1px solid rgba(239, 68, 68, 0.26);
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(254, 242, 242, 0.75), rgba(255, 255, 255, 0.95));
+  color: #7f1d1d;
+  padding: 18px;
+}
+
+.dbx-error-state h2 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.dbx-error-state p {
+  margin: 0;
+  color: #991b1b;
+  max-width: 560px;
+}
+
 .dbx-spinner {
   width: 34px;
   height: 34px;
@@ -96,6 +120,12 @@
   color: var(--dbx-muted);
   font-size: 0.92rem;
   font-weight: 600;
+}
+
+.dbx-subtle-loading {
+  margin-top: 6px;
+  font-size: 0.78rem;
+  opacity: 0.82;
 }
 
 .dbx-store {
@@ -188,6 +218,10 @@
   transform: translateY(-3px);
   box-shadow: var(--dbx-shadow-md);
   border-color: rgba(96, 165, 250, 0.4);
+}
+
+.dbx-kpi-card.is-loading {
+  opacity: 0.88;
 }
 
 .dbx-kpi-coral {
@@ -470,6 +504,33 @@
 
 .dbx-chart-area {
   min-height: 320px;
+}
+
+.dbx-chart-loading {
+  min-height: 380px;
+}
+
+.dbx-loading-pulse {
+  width: 100%;
+  height: 320px;
+  border-radius: 14px;
+  background: linear-gradient(
+    90deg,
+    rgba(148, 163, 184, 0.14) 0%,
+    rgba(148, 163, 184, 0.3) 50%,
+    rgba(148, 163, 184, 0.14) 100%
+  );
+  background-size: 200% 100%;
+  animation: dbx-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes dbx-pulse {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
 }
 
 .dbx-empty {

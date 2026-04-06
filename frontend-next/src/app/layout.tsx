@@ -1,25 +1,12 @@
 import type { Metadata } from "next";
-import { Cairo, Geist, Geist_Mono } from "next/font/google";
-import Script from "next/script";
-import { Toaster } from "@/components/ui/sonner";
-import { ThemeProvider } from "@/providers/theme-provider";
-import Providers from "@/providers/query-provider";
+import { Cairo } from "next/font/google";
+import AppProviders from "@/providers/app-providers";
 import "./globals.css";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
 
 const cairo = Cairo({
   variable: "--font-cairo",
   subsets: ["arabic", "latin"],
-  weight: ["300", "400", "500", "600", "700", "800", "900"],
+  weight: ["400", "600", "700"],
 });
 
 
@@ -37,49 +24,9 @@ export default function RootLayout({
     <html lang="ar" dir="rtl" suppressHydrationWarning>
       <body
         suppressHydrationWarning
-        className={`${geistSans.variable} ${geistMono.variable} ${cairo.variable} antialiased`}
+        className={`${cairo.variable} antialiased`}
       >
-        <Script
-          id="strip-bis-skin-checked"
-          strategy="beforeInteractive"
-          dangerouslySetInnerHTML={{
-            __html: `
-              (function () {
-                function stripAttr() {
-                  var nodes = document.querySelectorAll('[bis_skin_checked]');
-                  for (var i = 0; i < nodes.length; i++) {
-                    nodes[i].removeAttribute('bis_skin_checked');
-                  }
-                }
-                stripAttr();
-                var observer = new MutationObserver(function (mutations) {
-                  for (var i = 0; i < mutations.length; i++) {
-                    var m = mutations[i];
-                    if (m.type === 'attributes' && m.attributeName === 'bis_skin_checked') {
-                      m.target.removeAttribute('bis_skin_checked');
-                    }
-                  }
-                });
-                observer.observe(document.documentElement, {
-                  subtree: true,
-                  attributes: true,
-                  attributeFilter: ['bis_skin_checked']
-                });
-              })();
-            `,
-          }}
-        />
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="system"
-          enableSystem
-          disableTransitionOnChange
-        >
-          <Providers>
-            {children}
-            <Toaster position="top-center" />
-          </Providers>
-        </ThemeProvider>
+        <AppProviders>{children}</AppProviders>
       </body>
     </html>
   );

@@ -2,7 +2,7 @@
 
 import React, { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { toast } from 'sonner';
+import { appToast } from '@/components/ui/sonner';
 import { assistantAPI } from '@/lib/api';
 import {
   IconAI,
@@ -270,6 +270,16 @@ export default function QuickEntryPage() {
     const percent = ((required - missingCount) / required) * 100;
     return Math.max(0, Math.min(100, Math.round(percent)));
   }, [draft.customer.id, missingFields]);
+  const aiProviderLabel = useMemo(() => {
+    if (aiProviderState === 'ready') return 'Rabbit AI جاهز (Puter)';
+    if (aiProviderState === 'loading') return 'تهيئة Rabbit AI...';
+    return 'وضع احتياطي';
+  }, [aiProviderState]);
+  const predictionLabel = useMemo(() => {
+    if (prediction?.intent === 'create') return 'توقع Rabbit: إنشاء مباشر';
+    if (prediction?.intent) return 'توقع Rabbit: استكمال بيانات';
+    return canCreate ? 'جاهز للإنشاء' : 'بانتظار استكمال';
+  }, [canCreate, prediction]);
 
   const pushMessage = (role: 'assistant' | 'user', text: string, tone: 'neutral' | 'success' = 'neutral') => {
     setMessages((prev) => [...prev, { id: createId(), role, text, tone }]);
@@ -401,7 +411,7 @@ export default function QuickEntryPage() {
       }
 
       if (payload.record?.loan?.id) {
-        toast.success('تم إنشاء السجل بنجاح وجرى مزامنته مع صفحة القروض.');
+        appToast.success('تم إنشاء السجل بنجاح وجرى مزامنته مع صفحة القروض.');
         router.prefetch('/dashboard/loans');
         setQuickSuggestions(DEFAULT_SUGGESTIONS);
       }
@@ -409,7 +419,7 @@ export default function QuickEntryPage() {
       const backendMessage = error?.response?.data?.assistant || error?.response?.data?.error;
       const fallbackMessage = backendMessage || aiIntelligence?.assistantReply || 'تعذر إكمال العملية الآن. حاول مرة أخرى.';
       pushMessage('assistant', fallbackMessage);
-      toast.error(backendMessage || 'تعذر تنفيذ الإدخال السريع.');
+      appToast.error(backendMessage || 'تعذر تنفيذ الإدخال السريع.');
       if (aiIntelligence?.quickReplies?.length) {
         setQuickSuggestions(normalizeSuggestionList([
           ...aiIntelligence.quickReplies,
@@ -473,19 +483,11 @@ export default function QuickEntryPage() {
             <BrandSignature />
             <div>
               <h1>Rabbit Entry • الإدخال السريع الذكي</h1>
-              <p>محادثة ذكية تتنبأ بالنية وتكمل الحقول تلقائيًا لإنشاء سجل العميل والقرض بسرعة.</p>
+              <p>اكتب بلغة طبيعية، وRabbit يرتّب البيانات ويجهز السجل خطوة بخطوة.</p>
             </div>
           </div>
           <div className="qe-header-actions">
-            <div className={`qe-ai-badge ${aiProviderState}`}>
-              {aiProviderState === 'ready' && 'Rabbit AI (Puter) جاهز'}
-              {aiProviderState === 'loading' && 'جاري تهيئة Puter AI...'}
-              {aiProviderState === 'fallback' && 'وضع احتياطي (بدون AI)'}
-            </div>
-            <div className="qe-progress" aria-label="مستوى اكتمال البيانات">
-              <span>{completion}%</span>
-              <div className="qe-progress-track"><i style={{ width: `${completion}%` }} /></div>
-            </div>
+            <div className={`qe-ai-badge ${aiProviderState}`}>{aiProviderLabel}</div>
             <button type="button" className="qe-ghost-btn" onClick={handleReset}>
               <IconRefresh size={16} />
               <span>جلسة جديدة</span>
@@ -493,20 +495,41 @@ export default function QuickEntryPage() {
           </div>
         </header>
 
+        <section className="qe-kpi-row" aria-label="ملخص حالة الإدخال">
+          <article className="qe-kpi">
+            <small>اكتمال البيانات</small>
+            <strong>{completion}%</strong>
+            <div className="qe-kpi-bar"><i style={{ width: `${completion}%` }} /></div>
+          </article>
+          <article className="qe-kpi">
+            <small>الحقول الناقصة</small>
+            <strong>{missingFields.length}</strong>
+            <p>{missingFields.length > 0 ? 'تحتاج استكمال قبل الإنشاء' : 'كل الحقول الأساسية مكتملة'}</p>
+          </article>
+          <article className={`qe-kpi ${canCreate ? 'ready' : ''}`}>
+            <small>وضع التنفيذ</small>
+            <strong>{canCreate ? 'جاهز للإنشاء' : 'تجهيز السجل'}</strong>
+            <p>{predictionLabel}</p>
+          </article>
+        </section>
+
         <div className="qe-missing-strip">
-          {prediction?.intent && (
-            <span className={`qe-chip rabbit ${prediction.intent === 'create' ? 'create' : ''}`}>
-              Rabbit توقع: {prediction.intent === 'create' ? 'إنشاء سجل' : 'استكمال بيانات'}
-              {typeof prediction.confidence === 'number' && ` (${Math.round(prediction.confidence * 100)}%)`}
-            </span>
-          )}
-          {missingFields.length > 0 ? (
-            missingFields.map((field) => (
-              <span key={field} className="qe-chip">{MISSING_FIELD_LABELS[field] || field}</span>
-            ))
-          ) : (
-            <span className="qe-chip success"><IconCheck size={14} /> البيانات مكتملة</span>
-          )}
+          <p className="qe-strip-label">متطلبات الإدخال</p>
+          <div className="qe-chip-row">
+            {prediction?.intent && (
+              <span className={`qe-chip rabbit ${prediction.intent === 'create' ? 'create' : ''}`}>
+                {prediction.intent === 'create' ? 'إنشاء مباشر' : 'استكمال بيانات'}
+                {typeof prediction.confidence === 'number' && ` (${Math.round(prediction.confidence * 100)}%)`}
+              </span>
+            )}
+            {missingFields.length > 0 ? (
+              missingFields.map((field) => (
+                <span key={field} className="qe-chip">{MISSING_FIELD_LABELS[field] || field}</span>
+              ))
+            ) : (
+              <span className="qe-chip success"><IconCheck size={14} /> البيانات مكتملة</span>
+            )}
+          </div>
         </div>
 
         <div className="qe-messages" aria-live="polite">
@@ -529,6 +552,10 @@ export default function QuickEntryPage() {
 
         <footer className="qe-composer">
           <form onSubmit={handleSubmit}>
+            <div className="qe-composer-head">
+              <span>رسالة الإدخال</span>
+              <small>يدعم الصياغة الحرة بالعربية ويتعامل مع النصوص المختصرة</small>
+            </div>
             {quickSuggestions.length > 0 && (
               <div className="qe-suggestion-strip" aria-label="اقتراحات ذكية سريعة">
                 {quickSuggestions.map((suggestion) => (
@@ -573,6 +600,10 @@ export default function QuickEntryPage() {
       </section>
 
       <aside className="qe-inspector">
+        <div className="qe-inspector-head">
+          <h2>ملخص فوري للسجل</h2>
+          <p>كل ما يفهمه Rabbit يظهر هنا لحظة بلحظة قبل الإنشاء النهائي.</p>
+        </div>
         <section className="qe-panel">
           <header>
             <IconUsers size={16} />

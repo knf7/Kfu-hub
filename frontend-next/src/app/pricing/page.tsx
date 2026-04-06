@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import { appToast } from '@/components/ui/sonner';
 import AnimatedBackground from '@/components/layout/AnimatedBackground';
+import './pricing.css';
 import {
   IconCheck,
   IconChevronLeft,

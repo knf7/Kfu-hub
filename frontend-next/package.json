@@ -7,7 +7,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "analyze:bundle": "node scripts/analyze-bundle.mjs",
+    "build:analyze": "ANALYZE=true next build",
     "test:e2e": "playwright test",
+    "test:e2e:smoke": "playwright test e2e/dashboard.smoke.spec.ts",
     "test:e2e:headed": "playwright test --headed"
   },
   "dependencies": {
@@ -37,6 +41,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@next/bundle-analyzer": "^16.2.2",
     "@playwright/test": "^1.56.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",

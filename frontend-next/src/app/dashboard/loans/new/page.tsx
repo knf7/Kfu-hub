@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { loansAPI, customersAPI } from '@/lib/api';
 import { appToast } from '@/components/ui/sonner';
 import MoneyRain from '@/components/layout/MoneyRain';
+import './add-loan.css';
 
 type ExistingCustomer = {
     id: string;

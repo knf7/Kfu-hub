@@ -1,13 +1,17 @@
 const { Pool } = require('pg');
 require('dotenv').config();
 
+if (!process.env.RLS_TEST_DB_USER || !process.env.RLS_TEST_DB_PASSWORD) {
+    throw new Error('RLS_TEST_DB_USER and RLS_TEST_DB_PASSWORD are required to run rlsBoundaryTest.js');
+}
+
 // Use a restricted user to verify RLS
 const pool = new Pool({
     host: process.env.DB_HOST || 'localhost',
     port: parseInt(process.env.DB_PORT || '5432', 10),
     database: process.env.DB_NAME || 'loan_management',
-    user: 'rls_test_user',
-    password: 'testpass123'
+    user: process.env.RLS_TEST_DB_USER,
+    password: process.env.RLS_TEST_DB_PASSWORD
 });
 
 async function runRlsBoundaryTest() {

@@ -1,10 +1,14 @@
 const { Client } = require('pg');
 
+if (!process.env.DB_PASSWORD) {
+    throw new Error('DB_PASSWORD is required to run migrate-admin-settings.js');
+}
+
 const client = new Client({
     host: 'postgres',
     port: 5432,
     user: process.env.DB_USER || 'postgres',
-    password: process.env.DB_PASSWORD || 'postgres123',
+    password: process.env.DB_PASSWORD,
     database: process.env.DB_NAME || 'loan_management',
 });
 

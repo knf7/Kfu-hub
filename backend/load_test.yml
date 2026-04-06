@@ -19,8 +19,8 @@ scenarios:
       - post:
           url: "/api/auth/login"
           json:
-            identifier: "test@example.com"
-            password: "password123"
+            identifier: "{{ $processEnvironment.LOAD_TEST_USER_EMAIL }}"
+            password: "{{ $processEnvironment.LOAD_TEST_USER_PASSWORD }}"
           capture:
             - json: "$.sessionId"
               as: "sessionId"
@@ -28,7 +28,7 @@ scenarios:
           url: "/api/auth/verify-otp"
           json:
             sessionId: "{{ sessionId }}"
-            code: "123456"
+            code: "{{ $processEnvironment.LOAD_TEST_OTP }}"
           capture:
             - json: "$.token"
               as: "token"

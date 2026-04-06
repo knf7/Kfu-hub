@@ -2,9 +2,13 @@ const { Client } = require('pg');
 require('dotenv').config();
 
 const hosts = ['postgres', 'loan-management-db', 'localhost'];
-const dbPassword = process.env.DB_PASSWORD || 'postgres123';
+const dbPassword = process.env.DB_PASSWORD;
 const dbName = process.env.DB_NAME || 'loan_management';
 const dbUser = process.env.DB_USER || 'postgres';
+
+if (!dbPassword) {
+    throw new Error('DB_PASSWORD is required to run migrate-security.js');
+}
 
 async function connect(host) {
     console.log(`Trying to connect to ${host}...`);

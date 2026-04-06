@@ -61,6 +61,7 @@ if (bullBoardEnabled) {
 const { redis } = require('./config/redis');
 const db = require('./config/database');
 const { createObservability } = require('./middleware/observability');
+const { DEFAULT_BODY_LIMIT, payloadGuard, bodyParserErrorHandler } = require('./middleware/requestSecurity');
 
 // ── Schema Guard (idempotent, best-effort) ────────────────────────
 let coreSchemaEnsured = false;
@@ -185,55 +186,53 @@ const toNumber = (value, fallback) => {
     return Number.isFinite(n) ? n : fallback;
 };
 
+const isTest = process.env.NODE_ENV === 'test';
+
+// Rate limiting — all endpoints
+const globalRateLimitWindowMs = toNumber(process.env.GLOBAL_RATE_LIMIT_WINDOW_MS, 15 * 60 * 1000);
+const globalRateLimitMax = toNumber(process.env.GLOBAL_RATE_LIMIT_MAX, isTest ? 1000000 : 1000);
+const globalLimiter = rateLimit({
+    windowMs: globalRateLimitWindowMs,
+    max: globalRateLimitMax,
+    standardHeaders: true,
+    legacyHeaders: false,
+    skip: (req) => req.path === '/health' || req.path === '/api/health' || req.method === 'OPTIONS',
+    handler: (req, res) => {
+        res.status(429).json({
+            error: 'Too many requests. Please try again later.',
+            code: 'RATE_LIMIT_EXCEEDED',
+        });
+    },
+});
+app.use(globalLimiter);
+
 // Rate limiting — normal API routes
 const apiRateLimitWindowMs = toNumber(process.env.API_RATE_LIMIT_WINDOW_MS, 15 * 60 * 1000);
-const apiRateLimitMax = toNumber(process.env.API_RATE_LIMIT_MAX, 500);
+const apiRateLimitMax = toNumber(process.env.API_RATE_LIMIT_MAX, isTest ? 1000000 : 300);
 const limiter = rateLimit({
     windowMs: apiRateLimitWindowMs,
     max: apiRateLimitMax,
     standardHeaders: true,
     legacyHeaders: false,
-    skip: (req) => req.path.includes('/upload') // no limit for bulk uploads
+    skip: (req) => req.path.includes('/upload') || req.path === '/health' || req.path === '/api/health' || req.method === 'OPTIONS',
+    handler: (req, res) => {
+        res.status(429).json({
+            error: 'API rate limit exceeded. Try again shortly.',
+            code: 'API_RATE_LIMIT_EXCEEDED',
+        });
+    },
 });
 app.use('/api/', limiter);
 
-// Rate limiting — for login endpoint
-const loginRateLimitWindowMs = toNumber(process.env.LOGIN_RATE_LIMIT_WINDOW_MS, 15 * 60 * 1000);
-const loginRateLimitMax = toNumber(
-    process.env.LOGIN_RATE_LIMIT_MAX,
-    isProd ? 30 : 1000000
-);
-const loginLimiter = rateLimit({
-    windowMs: loginRateLimitWindowMs,
-    max: loginRateLimitMax,
-    standardHeaders: true,
-    legacyHeaders: false,
-    message: 'Too many login attempts from this IP, please try again later'
-});
-app.use('/api/auth/login', loginLimiter);
+// Clerk Webhooks must remain before JSON/body sanitization middleware (raw body signature verification).
+app.use('/api/webhooks', require('./routes/webhooks'));
 
-
-// Body parsing middleware — 50MB to allow large JSON payloads
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
-
-// Simple XSS Sanitizer Middleware
-const sanitize = (obj) => {
-    if (typeof obj !== 'object' || obj === null) return obj;
-    for (let key in obj) {
-        if (typeof obj[key] === 'string') {
-            obj[key] = obj[key].replace(/</g, "&lt;").replace(/>/g, "&gt;");
-        } else if (typeof obj[key] === 'object') {
-            sanitize(obj[key]);
-        }
-    }
-};
-app.use((req, res, next) => {
-    if (req.body) sanitize(req.body);
-    if (req.query) sanitize(req.query);
-    if (req.params) sanitize(req.params);
-    next();
-});
+// Body parsing middleware — guarded by strict request size and malformed payload handling.
+const requestParameterLimit = toNumber(process.env.REQUEST_PARAMETER_LIMIT, 200);
+app.use(express.json({ limit: DEFAULT_BODY_LIMIT, strict: true }));
+app.use(express.urlencoded({ extended: false, limit: DEFAULT_BODY_LIMIT, parameterLimit: requestParameterLimit }));
+app.use(bodyParserErrorHandler);
+app.use(payloadGuard);
 
 app.use(require('./config/passport').initialize());
 
@@ -333,8 +332,6 @@ app.get('/api/health', async (req, res) => {
 });
 
 // API Routes
-// Clerk Webhooks (must be before json body parser for raw body access)
-app.use('/api/webhooks', require('./routes/webhooks'));
 app.use('/api/auth', authRoutes);
 app.use('/api/loans', loansRoutes);
 app.use('/api/customers', customersRoutes);

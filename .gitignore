@@ -25,3 +25,4 @@ db_backups/
 *.zip
 *.tar.gz
 .agent/
+.vercel

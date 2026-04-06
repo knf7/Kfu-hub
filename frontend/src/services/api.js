@@ -175,7 +175,8 @@ export const loansAPI = {
     getById: (id) => api.get(`/loans/${id}`),
     create: (data) => api.post('/loans', data),
     update: (id, data) => api.patch(`/loans/${id}`, data),
-    updateStatus: (id, status) => api.patch(`/loans/${id}/status`, { status }),
+    updateStatus: (id, status, extra = {}) => api.patch(`/loans/${id}/status`, { status, ...extra }),
+    updateNajizCase: (id, data = {}) => api.patch(`/loans/${id}/najiz`, data),
     delete: (id) => api.delete(`/loans/${id}`),
     /** Upload CSV or XLSX file (multipart/form-data, field name: file). */
     upload: (formData) => api.post('/loans/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
@@ -226,4 +227,3 @@ export const employeesAPI = {
 };
 
 export default api;
-

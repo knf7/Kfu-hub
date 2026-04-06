@@ -1,9 +1,42 @@
 const express = require('express');
 const router = express.Router();
+const rateLimit = require('express-rate-limit');
 const authController = require('../controllers/authController');
-const passport = require('passport');
-const { authenticateToken, JWT_SECRET, JWT_EXPIRES_IN } = require('../middleware/auth');
-const jwt = require('jsonwebtoken');
+const { authenticateToken } = require('../middleware/auth');
+
+const toNumber = (value, fallback) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const authLimiterWindowMs = toNumber(process.env.AUTH_RATE_LIMIT_WINDOW_MS, 15 * 60 * 1000);
+const authLimiterMax = toNumber(
+    process.env.AUTH_RATE_LIMIT_MAX,
+    process.env.NODE_ENV === 'test' ? 100000 : 5
+);
+const authAttemptLimiter = rateLimit({
+    windowMs: authLimiterWindowMs,
+    max: authLimiterMax,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+        error: 'تم تجاوز الحد المسموح لمحاولات المصادقة. حاول مرة أخرى بعد 15 دقيقة.',
+        code: 'AUTH_RATE_LIMIT_EXCEEDED',
+    },
+    handler: (req, res, _next, options) => {
+        res.status(options.statusCode).json(options.message);
+    },
+});
+
+router.use([
+    '/register',
+    '/login',
+    '/verify-otp',
+    '/resend-otp',
+    '/forgot-password',
+    '/reset-password',
+    '/refresh',
+], authAttemptLimiter);
 
 // Traditional Auth
 router.post('/register', authController.register);

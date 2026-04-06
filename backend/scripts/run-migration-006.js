@@ -5,6 +5,10 @@ require('dotenv').config();
 
 const hosts = ['localhost', 'postgres', 'loan-management-db'];
 
+if (!process.env.DB_USER || !process.env.DB_PASSWORD || !process.env.DB_NAME || !process.env.DB_PORT) {
+    throw new Error('DB_USER, DB_PASSWORD, DB_NAME, and DB_PORT are required to run run-migration-006.js');
+}
+
 async function connect(host) {
     const client = new Client({
         connectionString: `postgresql://${process.env.DB_USER}:${process.env.DB_PASSWORD}@${host}:${process.env.DB_PORT}/${process.env.DB_NAME}`,
@@ -32,16 +36,8 @@ async function runMigration() {
     }
 
     if (!client) {
-        const fallback = 'postgresql://postgres:postgres123@localhost:5432/loan_management';
-        console.log(`Trying fallback connection: ${fallback}`);
-        client = new Client({ connectionString: fallback });
-        try {
-            await client.connect();
-            console.log('✅ Connected via fallback');
-        } catch (e) {
-            console.error('❌ Could not connect to database');
-            process.exit(1);
-        }
+        console.error('❌ Could not connect to database with configured environment variables');
+        process.exit(1);
     }
 
     try {

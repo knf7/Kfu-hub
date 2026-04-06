@@ -5,6 +5,10 @@ require('dotenv').config();
 
 const hosts = ['localhost', 'postgres', 'loan-management-db'];
 
+if (!process.env.DB_PASSWORD) {
+    throw new Error('DB_PASSWORD is required to run apply-migration.js');
+}
+
 async function connect(host) {
     const client = new Client({
         connectionString: `postgresql://${process.env.DB_USER || 'postgres'}:${process.env.DB_PASSWORD}@${host}:${process.env.DB_PORT || 5432}/${process.env.DB_NAME || 'loan_management'}`,

@@ -6,7 +6,7 @@ test('اختبار حقيقي: تسجيل حساب ثم تحديث مبالغ ن
         username: `qauser${unique}`,
         businessName: `متجر اختبار ${unique}`,
         email: `qa.real.${unique}@example.com`,
-        password: 'Password123!',
+        password: process.env.E2E_REAL_PASSWORD || `Qa!${String(unique).slice(-8)}aA`,
         mobile: `05${String(unique).slice(-8)}`,
     };
     const customer = {

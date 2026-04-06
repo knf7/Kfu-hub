@@ -1,15 +1,19 @@
 import { expect, test } from '@playwright/test';
 
+const runRealAuth = process.env.E2E_REAL_AUTH === 'true';
+
 const seed = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
 const account = {
   username: `e2e${seed}`.slice(0, 20),
   businessName: `E2E Business ${seed.slice(-6)}`,
   email: `e2e+${seed}@example.com`,
   mobile: `05${seed.slice(-8)}`,
-  password: 'E2EPass123!',
+  password: process.env.E2E_REAL_AUTH_PASSWORD || `E2E!${seed.slice(-8)}aA`,
 };
 
 test.describe.serial('Real auth flow (frontend-next)', () => {
+  test.skip(!runRealAuth, 'Real auth flow is disabled by default. Set E2E_REAL_AUTH=true to run it.');
+
   test('registers a new merchant account', async ({ page }) => {
     await page.goto('/register');
     await expect(page.getByRole('heading', { name: 'إنشاء حساب جديد' })).toBeVisible();
@@ -65,8 +69,9 @@ test.describe.serial('Real auth flow (frontend-next)', () => {
     await page.goto('/reset-password?token=invalid-token');
     await expect(page.getByRole('heading', { name: 'إعادة تعيين كلمة المرور' })).toBeVisible();
 
-    await page.locator('input[name="password"]').fill('NewPass123!');
-    await page.locator('input[name="confirmPassword"]').fill('NewPass123!');
+    const resetPassword = process.env.E2E_REAL_RESET_PASSWORD || `New!${seed.slice(-8)}aA`;
+    await page.locator('input[name="password"]').fill(resetPassword);
+    await page.locator('input[name="confirmPassword"]').fill(resetPassword);
 
     const resetResponse = page.waitForResponse((response) => (
       response.request().method() === 'POST'
