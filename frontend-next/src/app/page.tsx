@@ -126,7 +126,10 @@ export default function LandingPage() {
           <div className="moya-container moya-hero-grid">
             <div className="moya-hero-copy">
               <p className="moya-eyebrow">حل تشغيلي عربي موحّد</p>
-              <h1>نفس فكرة منصات الدفع الحديثة لكن مخصصة لإدارة القروض والتحصيل</h1>
+              <h1>
+                بوابة تشغيل القروض والتحصيل
+                <span className="moya-headline-accent">بنفس وضوح منصات الدفع الحديثة</span>
+              </h1>
               <p className="moya-lead">
                 أصيل المالي يجمع الإدخال، المتابعة، وتحديث ناجز في تجربة واضحة وسريعة تساعدك على
                 اتخاذ القرار من أول نظرة.
@@ -146,18 +149,87 @@ export default function LandingPage() {
               </ul>
             </div>
 
-            <aside className="moya-hero-visual" aria-label="ملخص تشغيلي حي">
-              <div className="moya-orbit">
-                <span className="moya-ring moya-ring-a" />
-                <span className="moya-ring moya-ring-b" />
-                <span className="moya-ring moya-ring-c" />
-                <div className="moya-core">
-                  <strong>83.1%</strong>
-                  <span>نسبة التحصيل</span>
+            <aside className="moya-hero-visual" aria-label="معاينة المنتج">
+              <div className="moya-preview" aria-hidden="true">
+                <div className="moya-preview-frame">
+                  <div className="moya-preview-top">
+                    <div className="moya-preview-dots">
+                      <span />
+                      <span />
+                      <span />
+                    </div>
+                    <div className="moya-preview-url">www.assal-ksa.com</div>
+                    <div className="moya-preview-pill">LIVE</div>
+                  </div>
+
+                  <div className="moya-preview-body">
+                    <div className="moya-preview-sidebar">
+                      <span className="moya-sb-icon active" />
+                      <span className="moya-sb-icon" />
+                      <span className="moya-sb-icon" />
+                      <span className="moya-sb-icon" />
+                      <span className="moya-sb-icon" />
+                    </div>
+
+                    <div className="moya-preview-main">
+                      <div className="moya-preview-kpis">
+                        <div className="moya-kpi">
+                          <span>إجمالي المحفظة</span>
+                          <strong>111,531</strong>
+                          <em>ر.س</em>
+                        </div>
+                        <div className="moya-kpi">
+                          <span>التحصيل</span>
+                          <strong>83.1%</strong>
+                          <em>هذا الشهر</em>
+                        </div>
+                        <div className="moya-kpi">
+                          <span>متأخرات</span>
+                          <strong>8</strong>
+                          <em>30+ يوم</em>
+                        </div>
+                      </div>
+
+                      <div className="moya-preview-chart" aria-hidden="true">
+                        <svg viewBox="0 0 240 86" width="100%" height="100%" preserveAspectRatio="none">
+                          <defs>
+                            <linearGradient id="moyaChartFill" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%" stopColor="#2b7fff" stopOpacity="0.28" />
+                              <stop offset="100%" stopColor="#2b7fff" stopOpacity="0.02" />
+                            </linearGradient>
+                          </defs>
+                          <path
+                            d="M0,70 C30,60 40,20 70,24 C96,28 106,44 128,40 C150,36 164,14 184,18 C208,22 216,40 240,26 L240,86 L0,86 Z"
+                            fill="url(#moyaChartFill)"
+                          />
+                          <path
+                            d="M0,70 C30,60 40,20 70,24 C96,28 106,44 128,40 C150,36 164,14 184,18 C208,22 216,40 240,26"
+                            fill="none"
+                            stroke="#7fb2ff"
+                            strokeWidth="2.5"
+                            strokeLinecap="round"
+                          />
+                        </svg>
+                      </div>
+
+                      <div className="moya-preview-chat">
+                        <div className="moya-preview-chat-head">
+                          <span className="moya-preview-rabbit">Rabbit</span>
+                          <span className="moya-preview-status">جاهز</span>
+                        </div>
+                        <div className="moya-preview-chat-body">
+                          <div className="moya-preview-bubble user">أضف قرض 12,000 لعبدالله</div>
+                          <div className="moya-preview-bubble ai">تمام. رقم الهوية وتاريخ الاستحقاق؟</div>
+                        </div>
+                        <div className="moya-preview-chat-input">
+                          <span />
+                          <span />
+                          <span />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <b className="moya-node node-1">ناجز</b>
-                <b className="moya-node node-2">API</b>
-                <b className="moya-node node-3">Excel</b>
               </div>
             </aside>
           </div>
