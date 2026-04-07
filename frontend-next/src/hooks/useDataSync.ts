@@ -14,15 +14,16 @@ const matchesScope = (event: DataSyncEvent | undefined, scopes?: string[]) => {
 export const useDataSync = (handler: (event: DataSyncEvent) => void, options: Options = {}) => {
     const handlerRef = useRef(handler);
     const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const debounceMs = options.debounceMs ?? 200;
+    const scopes = options.scopes;
 
     useEffect(() => {
         handlerRef.current = handler;
     }, [handler]);
 
     useEffect(() => {
-        const debounceMs = options.debounceMs ?? 200;
         const unsubscribe = subscribeDataSync((event) => {
-            if (!matchesScope(event, options.scopes)) return;
+            if (!matchesScope(event, scopes)) return;
             if (event?.scopes?.length) {
                 invalidateCacheForScopes(event.scopes);
             }
@@ -44,5 +45,5 @@ export const useDataSync = (handler: (event: DataSyncEvent) => void, options: Op
             }
             unsubscribe();
         };
-    }, [options.debounceMs, (options.scopes || []).join('|')]);
+    }, [debounceMs, scopes]);
 };

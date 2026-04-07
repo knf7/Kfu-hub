@@ -101,7 +101,7 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
     if (typeof window === 'undefined') return false;
     return (localStorage.getItem('theme') || 'light') === 'dark';
   });
-  const [quickEntryExpanded, setQuickEntryExpanded] = useState(false);
+  const [quickEntryExpandedPath, setQuickEntryExpandedPath] = useState<string | null>(null);
 
   const currentTitle = useMemo(() => {
     const current = findNavMatch(pathname);
@@ -132,25 +132,22 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
   );
 
   const showQuickEntryShortcut = hasPageAccess('/dashboard/quick-entry') && pathname !== '/dashboard/quick-entry';
-
-  useEffect(() => {
-    setQuickEntryExpanded(false);
-  }, [pathname, showQuickEntryShortcut]);
+  const quickEntryExpanded = showQuickEntryShortcut && quickEntryExpandedPath === pathname;
 
   useEffect(() => {
     if (!quickEntryExpanded) return;
-    const timeoutId = window.setTimeout(() => setQuickEntryExpanded(false), 2600);
+    const timeoutId = window.setTimeout(() => setQuickEntryExpandedPath(null), 2600);
     return () => window.clearTimeout(timeoutId);
   }, [quickEntryExpanded]);
 
   const handleQuickEntryShortcutClick = useCallback((event: React.MouseEvent<HTMLAnchorElement>) => {
     if (!quickEntryExpanded) {
       event.preventDefault();
-      setQuickEntryExpanded(true);
+      setQuickEntryExpandedPath(pathname);
       return;
     }
-    setQuickEntryExpanded(false);
-  }, [quickEntryExpanded]);
+    setQuickEntryExpandedPath(null);
+  }, [pathname, quickEntryExpanded]);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light');
@@ -303,7 +300,7 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
                   href="/dashboard/quick-entry"
                   className={`quick-entry-mini ${quickEntryExpanded ? 'expanded' : ''}`}
                   onClick={handleQuickEntryShortcutClick}
-                  onBlur={() => setQuickEntryExpanded(false)}
+                  onBlur={() => setQuickEntryExpandedPath(null)}
                   aria-label="الإدخال السريع"
                   aria-expanded={quickEntryExpanded}
                   title={quickEntryExpanded ? 'فتح الإدخال السريع' : 'إدخال سريع'}

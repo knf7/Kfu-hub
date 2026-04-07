@@ -138,7 +138,14 @@ export default function ExcelUploadPage() {
         setHeaders(headerList);
         setPreview(normalized.slice(0, 8));
 
-        const defaults: Record<FieldKey, string> = { ...columnMap };
+        const defaults: Record<FieldKey, string> = {
+            nationalId: '',
+            fullName: '',
+            mobileNumber: '',
+            amount: '',
+            receiptNumber: '',
+            date: ''
+        };
         (Object.keys(LOAN_COLUMN_MAP) as FieldKey[]).forEach((key) => {
             const found = normalized[0] ? findColumn(normalized[0], LOAN_COLUMN_MAP[key]) : null;
             defaults[key] = found || '';

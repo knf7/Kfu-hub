@@ -30,6 +30,19 @@ type NajizCase = {
     transaction_date: string;
 };
 
+const parseMoneyInput = (value: string | number | null | undefined) => {
+    if (value === null || value === undefined || value === '') return null;
+    const raw = String(value);
+    const arabicDigits = '٠١٢٣٤٥٦٧٨٩';
+    const persianDigits = '۰۱۲۳۴۵۶۷۸۹';
+    const normalizedDigits = raw
+        .replace(/[٠-٩]/g, (d) => String(arabicDigits.indexOf(d)))
+        .replace(/[۰-۹]/g, (d) => String(persianDigits.indexOf(d)));
+    const stripped = normalizedDigits.replace(/[٬،,]/g, '').replace(/[^\d.-]/g, '');
+    const parsed = Number(stripped);
+    return Number.isFinite(parsed) ? Math.max(0, parsed) : null;
+};
+
 export default function NajizCasesPage() {
     const [cases, setCases] = useState<NajizCase[]>([]);
     const [loading, setLoading] = useState(true);
@@ -39,19 +52,6 @@ export default function NajizCasesPage() {
     const [confirmPaidCaseId, setConfirmPaidCaseId] = useState<string | null>(null);
     const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const requestIdRef = useRef(0);
-    const parseMoneyInput = (value: string | number | null | undefined) => {
-        if (value === null || value === undefined || value === '') return null;
-        const raw = String(value);
-        const arabicDigits = '٠١٢٣٤٥٦٧٨٩';
-        const persianDigits = '۰۱۲۳۴۵۶۷۸۹';
-        const normalizedDigits = raw
-            .replace(/[٠-٩]/g, (d) => String(arabicDigits.indexOf(d)))
-            .replace(/[۰-۹]/g, (d) => String(persianDigits.indexOf(d)));
-        const stripped = normalizedDigits.replace(/[٬،,]/g, '').replace(/[^\d.-]/g, '');
-        const parsed = Number(stripped);
-        return Number.isFinite(parsed) ? Math.max(0, parsed) : null;
-    };
-
     const fetchCases = useCallback(async (forceFresh = false) => {
         const requestId = ++requestIdRef.current;
         try {
@@ -82,7 +82,6 @@ export default function NajizCasesPage() {
                 setLoading(false);
             }
         }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []); // Stable ref — never stale
 
     useEffect(() => {

@@ -125,7 +125,7 @@ const LoansPage = () => {
                     totalPages: cached.pagination?.totalPages ?? prev.totalPages
                 }));
                 setLoading(false);
-            } else if (loans.length === 0) {
+            } else if (loansRef.current.length === 0) {
                 setLoading(true);
             }
             const response = await loansAPI.getAll(params);
