@@ -4,7 +4,6 @@ import React, { useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import Image from 'next/image';
 import {
   ArrowLeft,
   CheckCircle2,
@@ -73,7 +72,20 @@ const fadeInUp = {
 };
 
 function BrandMark() {
-  return <Image src="/aseel-logo.svg" alt="أصيل المالي" width={38} height={38} className="object-contain" priority />;
+  return (
+    <div
+      aria-label="شعار أصيل"
+      className="w-10 h-10 rounded-[0.8rem] bg-gradient-to-b from-[#8ab4f8] to-[#60a5fa] border-2 border-slate-200 shadow-sm p-1.5 flex items-end justify-center gap-1"
+      dir="ltr"
+    >
+      <div className="w-1.5 h-[60%] bg-white rounded-full" />
+      <div className="w-1.5 h-[80%] bg-white rounded-full" />
+      <div className="flex flex-col items-center justify-end h-full gap-0.5">
+        <div className="w-1.5 h-1.5 bg-white rounded-full" />
+        <div className="w-1.5 h-[40%] bg-white rounded-full" />
+      </div>
+    </div>
+  );
 }
 
 export default function LandingPage() {
