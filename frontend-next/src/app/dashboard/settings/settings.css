@@ -247,9 +247,9 @@
 }
 
 .btn-ghost {
-  background: rgba(100, 116, 139, 0.1);
-  border: 1px solid rgba(100, 116, 139, 0.22);
-  color: var(--text-secondary);
+  background: var(--btn-secondary-bg);
+  border: 1px solid var(--btn-secondary-border);
+  color: var(--btn-secondary-text);
 }
 
 .empty-cell {

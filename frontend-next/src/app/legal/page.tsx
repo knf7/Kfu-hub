@@ -18,6 +18,9 @@ export default function LegalIndexPage() {
           <Link className="rounded-lg border border-slate-200 p-4 hover:border-slate-300" href="/privacy">
             سياسة الخصوصية
           </Link>
+          <Link className="rounded-lg border border-slate-200 p-4 hover:border-slate-300" href="/cookies-policy">
+            سياسة ملفات تعريف الارتباط
+          </Link>
           <Link className="rounded-lg border border-slate-200 p-4 hover:border-slate-300" href="/usage-policy">
             سياسة الاستخدام المقبول
           </Link>

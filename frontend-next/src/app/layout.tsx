@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Cairo } from "next/font/google";
 import AppProviders from "@/providers/app-providers";
+import CookieConsentBanner from "@/components/legal/CookieConsentBanner";
 import "./globals.css";
 
 const cairo = Cairo({
@@ -26,7 +27,10 @@ export default function RootLayout({
         suppressHydrationWarning
         className={`${cairo.variable} antialiased`}
       >
-        <AppProviders>{children}</AppProviders>
+        <AppProviders>
+          {children}
+          <CookieConsentBanner />
+        </AppProviders>
       </body>
     </html>
   );

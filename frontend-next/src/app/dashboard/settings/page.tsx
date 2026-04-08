@@ -250,6 +250,20 @@ export default function SettingsPage() {
                 </div>
               </div>
 
+              <div className="form-group">
+                <label>WhatsApp Phone Number ID</label>
+                <input
+                  type="text"
+                  className="input"
+                  placeholder="مثال: 123456789012345"
+                  value={profile.whatsapp_phone_id}
+                  onChange={(e) => setProfile({ ...profile, whatsapp_phone_id: e.target.value })}
+                />
+                <p className="text-xs text-slate-500 mt-2">
+                  هذا المعرف يُستخدم لربط قناة واتساب الرسمية لاستقبال طلبات العملاء والرد عليهم تلقائياً بملخص البيانات.
+                </p>
+              </div>
+
               {messages.profile && <div className="message info">{messages.profile}</div>}
               <button type="submit" className="btn btn-primary">حفظ تغييرات الحساب</button>
             </form>

@@ -370,6 +370,7 @@ export default function LandingPage() {
              <div className="flex gap-6">
                 <Link href="/terms" className="hover:text-blue-600">الشروط والأحكام</Link>
                 <Link href="/privacy" className="hover:text-blue-600">سياسة الخصوصية</Link>
+                <Link href="/cookies-policy" className="hover:text-blue-600">سياسة الكوكيز</Link>
              </div>
           </div>
         </div>

@@ -305,21 +305,21 @@
 .plan-cta-primary {
     width: 100%;
     padding: 13px;
-    background: linear-gradient(135deg, var(--coral) 0%, var(--coral-dark) 100%);
-    color: #fff;
-    border: none;
+    background: var(--btn-primary-bg);
+    color: var(--btn-primary-text);
+    border: 1px solid var(--btn-primary-border);
     border-radius: 0.9rem;
     font-size: 15px;
     font-weight: 700;
     cursor: pointer;
     font-family: var(--font);
     transition: background 0.2s ease-in-out, box-shadow 0.2s ease-in-out, transform 0.15s ease-in-out;
-    box-shadow: var(--shadow-coral);
+    box-shadow: var(--btn-primary-shadow);
 }
 
 .plan-cta-primary:hover {
-    filter: brightness(1.05);
-    box-shadow: 0 10px 22px rgba(96, 165, 250, 0.35);
+    background: var(--btn-primary-hover);
+    box-shadow: var(--btn-primary-shadow);
 }
 
 .plan-cta-primary:active {
@@ -329,9 +329,9 @@
 .plan-cta-secondary {
     width: 100%;
     padding: 13px;
-    background: var(--bg-card);
-    color: var(--text-primary);
-    border: 1px solid var(--slate-300);
+    background: var(--btn-secondary-bg);
+    color: var(--btn-secondary-text);
+    border: 1px solid var(--btn-secondary-border);
     border-radius: 0.9rem;
     font-size: 15px;
     font-weight: 700;
@@ -341,9 +341,9 @@
 }
 
 .plan-cta-secondary:hover {
-    background: var(--text-primary);
-    color: #FFFFFF;
-    border-color: var(--text-primary);
+    background: var(--btn-secondary-hover);
+    color: var(--btn-secondary-text);
+    border-color: var(--btn-secondary-border);
 }
 
 .plan-cta-secondary:active {

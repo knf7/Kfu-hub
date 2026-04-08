@@ -88,22 +88,29 @@
     align-items: center;
     gap: 6px;
     padding: 9px 18px;
-    background: linear-gradient(135deg, var(--coral), var(--coral-dark));
-    color: #fff;
+    background: var(--btn-primary-bg);
+    color: var(--btn-primary-text);
+    border: 1px solid var(--btn-primary-border);
     border-radius: var(--r-md);
     font-size: 13px;
     font-weight: 700;
-    box-shadow: var(--shadow-coral);
+    box-shadow: var(--btn-primary-shadow);
     transition: all var(--t-fast);
 }
 
 .btn-primary:hover {
+    background: var(--btn-primary-hover);
     transform: translateY(-1px);
 }
 
 .btn-secondary {
-    background: rgba(26, 43, 74, 0.06);
-    color: var(--navy);
+    background: var(--btn-secondary-bg);
+    color: var(--btn-secondary-text);
+    border: 1px solid var(--btn-secondary-border);
+}
+
+.btn-secondary:hover {
+    background: var(--btn-secondary-hover);
 }
 
 .btn-clear {

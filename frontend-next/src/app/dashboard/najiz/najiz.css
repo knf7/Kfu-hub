@@ -280,9 +280,10 @@
 }
 
 .btn-primary {
-  color: #fff;
-  background: linear-gradient(135deg, var(--coral), var(--coral-dark));
-  box-shadow: var(--shadow-coral);
+  color: var(--btn-primary-text);
+  background: var(--btn-primary-bg);
+  border: 1px solid var(--btn-primary-border);
+  box-shadow: var(--btn-primary-shadow);
 }
 
 .btn-primary:disabled {
@@ -295,9 +296,9 @@
 }
 
 .btn-secondary {
-  color: #0f172a;
-  background: #fff;
-  border: 1px solid rgba(148, 163, 184, 0.35);
+  color: var(--btn-secondary-text);
+  background: var(--btn-secondary-bg);
+  border: 1px solid var(--btn-secondary-border);
 }
 
 .upload-btn-inline {

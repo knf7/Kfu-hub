@@ -113,16 +113,17 @@
 
 /* Professional Buttons */
 .lp-btn-primary {
-  background: var(--lp-primary);
-  color: #fff;
+  background: var(--btn-primary-bg);
+  color: var(--btn-primary-text);
+  border: 1px solid var(--btn-primary-border);
   font-weight: 600;
   transition: all 0.2s cubic-bezier(0.2, 0, 0, 1);
-  box-shadow: 0 4px 12px -4px rgba(29, 119, 255, 0.4);
+  box-shadow: var(--btn-primary-shadow);
 }
 
 .lp-btn-primary:hover {
-  background: var(--lp-primary-strong);
-  box-shadow: 0 6px 16px -4px rgba(29, 119, 255, 0.5);
+  background: var(--btn-primary-hover);
+  box-shadow: var(--btn-primary-shadow);
   transform: translateY(-1px);
 }
 
