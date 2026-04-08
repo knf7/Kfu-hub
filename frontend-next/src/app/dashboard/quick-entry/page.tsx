@@ -14,6 +14,24 @@ import {
 } from '@/components/layout/icons';
 import './quick-entry.css';
 
+// SVG for Paperclip attachment
+function IconPaperclip({ size = 24, className = '' }) {
+  return (
+    <svg xmlns="http://www.w3.org/2001/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+    </svg>
+  );
+}
+
+// SVG for Trash
+function IconTrash({ size = 24, className = '' }) {
+  return (
+    <svg xmlns="http://www.w3.org/2001/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+    </svg>
+  );
+}
+
 type QuickEntryDraft = {
   customer: {
     id: string | null;
@@ -54,8 +72,6 @@ type AssistantPayload = {
   prediction?: {
     intent?: 'create' | 'collect_more' | string;
     confidence?: number;
-    reason?: string;
-    autoConfirmEligible?: boolean;
   };
   record?: AssistantRecord | null;
   customerMatch?: {
@@ -71,6 +87,7 @@ type ChatMessage = {
   role: 'assistant' | 'user';
   text: string;
   tone?: 'neutral' | 'success';
+  imagePreview?: string;
 };
 
 type AiExtracted = {
@@ -83,23 +100,6 @@ type AiExtracted = {
   transactionDate?: string | null;
   intent?: string | null;
 };
-
-type PuterIntelligence = {
-  extracted: AiExtracted | null;
-  assistantReply: string | null;
-  followUpQuestion: string | null;
-  quickReplies: string[];
-};
-
-declare global {
-  interface Window {
-    puter?: {
-      ai?: {
-        chat: (...args: any[]) => Promise<any>;
-      };
-    };
-  }
-}
 
 const EMPTY_DRAFT: QuickEntryDraft = {
   customer: {
@@ -134,8 +134,7 @@ const MISSING_FIELD_SUGGESTIONS: Record<string, string> = {
 
 const DEFAULT_SUGGESTIONS = [
   'عميل جديد: الاسم + الهوية + الجوال + المبلغ',
-  'عميل سابق: الهوية + مبلغ القرض',
-  'أكمل البيانات الناقصة تلقائياً',
+  'أرفق صورة لبطاقة الهوية أو إيصال للتحليل البصري',
 ];
 
 const normalizeSuggestionList = (items: string[]) =>
@@ -145,43 +144,8 @@ const getSuggestionsFromMissing = (fields: string[]) => normalizeSuggestionList(
   fields.map((field) => MISSING_FIELD_SUGGESTIONS[field]).filter(Boolean)
 );
 
-const formatCurrency = (value: number | null | undefined) => {
-  if (!Number.isFinite(Number(value))) return '—';
-  return `${Number(value).toLocaleString('en-US')} ر.س`;
-};
-
 const getTodayIso = () => new Date().toISOString().slice(0, 10);
-
 const createId = () => `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-const PUTER_SCRIPT_SRC = 'https://js.puter.com/v2/';
-const PUTER_MODEL = 'gpt-5.4-nano';
-
-const extractJsonObject = (value: string) => {
-  const trimmed = String(value || '').trim();
-  if (!trimmed) return null;
-  try {
-    return JSON.parse(trimmed);
-  } catch {
-    const match = trimmed.match(/\{[\s\S]*\}/);
-    if (!match) return null;
-    try {
-      return JSON.parse(match[0]);
-    } catch {
-      return null;
-    }
-  }
-};
-
-const normalizePuterResponseText = (response: any): string => {
-  if (typeof response === 'string') return response;
-  if (typeof response?.text === 'string') return response.text;
-  if (typeof response?.content === 'string') return response.content;
-  if (typeof response?.message?.content === 'string') return response.message.content;
-  if (Array.isArray(response?.choices) && response.choices[0]?.message?.content) {
-    return String(response.choices[0].message.content);
-  }
-  return JSON.stringify(response || '');
-};
 
 function BrandSignature() {
   return (
@@ -210,10 +174,11 @@ export default function QuickEntryPage() {
       id: createId(),
       role: 'assistant',
       tone: 'neutral',
-      text: 'ابدأ الآن: اكتب تفاصيل القرض بأي صيغة وسأجمع الحقول الناقصة تلقائيًا.',
+      text: 'مرحباً، أنا الذكاء الاصطناعي الخاص بـ Rabbit. اكتب تفاصيل القرض أو ارفع صورة لمستند وسألتقط البيانات المعقدة في ثانية!',
     },
   ]);
   const [input, setInput] = useState('');
+  const [attachment, setAttachment] = useState<{ file: File; base64: string; type: string } | null>(null);
   const [draft, setDraft] = useState<QuickEntryDraft>(EMPTY_DRAFT);
   const [missingFields, setMissingFields] = useState<string[]>(['fullName', 'nationalId', 'mobileNumber', 'amount']);
   const [canCreate, setCanCreate] = useState(false);
@@ -221,68 +186,38 @@ export default function QuickEntryPage() {
   const [customerMatch, setCustomerMatch] = useState<AssistantPayload['customerMatch']>(null);
   const [lastRecord, setLastRecord] = useState<AssistantRecord | null>(null);
   const [prediction, setPrediction] = useState<AssistantPayload['prediction'] | null>(null);
-  const [aiProviderState, setAiProviderState] = useState<'loading' | 'ready' | 'fallback'>('loading');
   const [quickSuggestions, setQuickSuggestions] = useState<string[]>(DEFAULT_SUGGESTIONS);
+  
   const endRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const hasPrefillRunRef = useRef(false);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages, loading]);
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    if (window.puter?.ai?.chat) {
-      setAiProviderState('ready');
-      return;
-    }
-
-    const markReady = () => setAiProviderState(window.puter?.ai?.chat ? 'ready' : 'fallback');
-    const markFallback = () => setAiProviderState('fallback');
-
-    const existing = document.querySelector(`script[src="${PUTER_SCRIPT_SRC}"]`) as HTMLScriptElement | null;
-    if (existing) {
-      existing.addEventListener('load', markReady);
-      existing.addEventListener('error', markFallback);
-      return () => {
-        existing.removeEventListener('load', markReady);
-        existing.removeEventListener('error', markFallback);
-      };
-    }
-
-    const script = document.createElement('script');
-    script.src = PUTER_SCRIPT_SRC;
-    script.async = true;
-    script.onload = markReady;
-    script.onerror = markFallback;
-    document.head.appendChild(script);
-
-    return () => {
-      script.onload = null;
-      script.onerror = null;
-    };
-  }, []);
-
   const completion = useMemo(() => {
-    const required = draft.customer.id ? 1 : 4;
-    const missingCount = Math.min(missingFields.length, required);
-    const percent = ((required - missingCount) / required) * 100;
+    // Basic logic mapping to completeness
+    const required = draft.customer.id ? 2 : 4; 
+    let filled = 0;
+    if (draft.customer.fullName) filled++;
+    if (draft.customer.nationalId) filled++;
+    if (draft.customer.mobileNumber) filled++;
+    if (draft.loan.amount) filled++;
+    
+    const percent = (filled / 4) * 100;
     return Math.max(0, Math.min(100, Math.round(percent)));
-  }, [draft.customer.id, missingFields]);
-  const aiProviderLabel = useMemo(() => {
-    if (aiProviderState === 'ready') return 'Rabbit AI جاهز (Puter)';
-    if (aiProviderState === 'loading') return 'تهيئة Rabbit AI...';
-    return 'وضع احتياطي';
-  }, [aiProviderState]);
+  }, [draft]);
+
   const predictionLabel = useMemo(() => {
-    if (prediction?.intent === 'create') return 'توقع Rabbit: إنشاء مباشر';
-    if (prediction?.intent) return 'توقع Rabbit: استكمال بيانات';
-    return canCreate ? 'جاهز للإنشاء' : 'بانتظار استكمال';
+    if (prediction?.intent === 'create') return 'توقع Rabbit: تصدير مباشر للبيانات';
+    if (prediction?.intent) return 'توقع Rabbit: استكمال الحقول';
+    return canCreate ? 'جاهز للمراجعة والإنشاء' : 'بانتظار تحليل البيانات';
   }, [canCreate, prediction]);
 
-  const pushMessage = (role: 'assistant' | 'user', text: string, tone: 'neutral' | 'success' = 'neutral') => {
-    setMessages((prev) => [...prev, { id: createId(), role, text, tone }]);
+  const pushMessage = (role: 'assistant' | 'user', text: string, tone: 'neutral' | 'success' = 'neutral', imagePreview?: string) => {
+    setMessages((prev) => [...prev, { id: createId(), role, text, tone, imagePreview }]);
   };
 
   const refreshSuggestions = (fields: string[], aiReplies: string[] = []) => {
@@ -309,9 +244,29 @@ export default function QuickEntryPage() {
     }
   };
 
-  const analyzeWithPuter = async (text: string): Promise<PuterIntelligence | null> => {
-    if (typeof window === 'undefined' || !window.puter?.ai?.chat) return null;
+  // Convert File to Base64
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    // Quick size validation (limit to exactly what Gemini allows typically 4MB is extremely safe)
+    if (file.size > 8 * 1024 * 1024) {
+      appToast.error('حجم الملف كبير جداً، الحد الأقصى 8 ميجابايت.');
+      return;
+    }
 
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      setAttachment({
+        file,
+        base64: ev.target?.result as string,
+        type: file.type
+      });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const analyzeWithGemini = async (text: string, imageObj: typeof attachment): Promise<any> => {
     const draftSnapshot = {
       customer: {
         fullName: draft.customer.fullName,
@@ -325,107 +280,89 @@ export default function QuickEntryPage() {
         transactionDate: draft.loan.transactionDate,
       },
     };
+    
     const recentConversation = messages
       .slice(-6)
       .map((msg) => `${msg.role === 'assistant' ? 'ASSISTANT' : 'USER'}: ${msg.text}`)
-      .join('\n');
-
-    const prompt = [
-      'أنت مساعد ذكي للإدخال السريع للقروض في السعودية.',
-      'المطلوب: استخراج الحقول، اقتراح سؤال متابعة ذكي، وتوليد اقتراحات رد جاهزة للمستخدم.',
-      'أعد JSON فقط بدون markdown بالشكل التالي:',
-      '{"extracted":{"fullName":null,"nationalId":null,"mobileNumber":null,"amount":null,"profitPercentage":null,"receiptNumber":null,"transactionDate":null,"intent":null},"assistantReply":null,"followUpQuestion":null,"quickReplies":[]}',
-      'intent يجب أن تكون واحدة من: confirm أو collect_more أو create.',
-      'followUpQuestion يجب أن تكون جملة عربية قصيرة تجمع أهم البيانات الناقصة.',
-      'quickReplies مصفوفة قصيرة (2-4 عناصر) تساعد المستخدم على الرد بسرعة.',
-      `Draft الحالي: ${JSON.stringify(draftSnapshot)}`,
-      `الحقول الناقصة الحالية: ${JSON.stringify(missingFields)}`,
-      `سياق المحادثة (آخر الرسائل): ${recentConversation || 'لا يوجد سياق بعد'}`,
-      `الرسالة: ${text}`,
-    ].join('\n');
+      .join('\\n');
 
     try {
-      const raw = await window.puter.ai.chat(prompt, { model: PUTER_MODEL });
-      const parsed = extractJsonObject(normalizePuterResponseText(raw));
-      if (!parsed || typeof parsed !== 'object') return null;
-
-      const source = (parsed.extracted && typeof parsed.extracted === 'object') ? parsed.extracted : parsed;
-      const quickReplies = normalizeSuggestionList(
-        Array.isArray(parsed.quickReplies)
-          ? parsed.quickReplies.map((item: unknown) => String(item ?? ''))
-          : []
-      );
-
-      return {
-        extracted: {
-          fullName: source.fullName ?? null,
-          nationalId: source.nationalId ?? null,
-          mobileNumber: source.mobileNumber ?? null,
-          amount: source.amount ?? null,
-          profitPercentage: source.profitPercentage ?? null,
-          receiptNumber: source.receiptNumber ?? null,
-          transactionDate: source.transactionDate ?? null,
-          intent: source.intent ?? parsed.intent ?? null,
+      const response = await fetch('/api/assistant/rabbit-entry', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
         },
-        assistantReply: typeof parsed.assistantReply === 'string' ? parsed.assistantReply.trim() : null,
-        followUpQuestion: typeof parsed.followUpQuestion === 'string' ? parsed.followUpQuestion.trim() : null,
-        quickReplies,
-      };
-    } catch {
+        body: JSON.stringify({
+          message: text,
+          draft: draftSnapshot,
+          missingFields,
+          recentConversation,
+          imageBase64: imageObj ? { base64: imageObj.base64, type: imageObj.type } : null
+        })
+      });
+
+      if (!response.ok) {
+         const err = await response.json();
+         throw new Error(err.error || 'Failed to analyze with Gemini');
+      }
+
+      return await response.json();
+    } catch (e: any) {
+      console.error(e);
       return null;
     }
   };
 
   const sendToAssistant = async (text: string, confirm = false) => {
     const clean = String(text || '').trim();
-    if (!clean || loading) return;
+    if ((!clean && !attachment) || loading) return;
 
-    pushMessage('user', clean);
+    pushMessage('user', clean || 'لقد قمت بإرفاق صورة/مستند للتحليل...', 'neutral', attachment?.base64);
+    
+    const currentAttachment = attachment;
     setInput('');
+    setAttachment(null);
     setLoading(true);
-    let aiIntelligence: PuterIntelligence | null = null;
 
     try {
-      aiIntelligence = aiProviderState === 'ready' ? await analyzeWithPuter(clean) : null;
-      const aiExtracted = aiIntelligence?.extracted || null;
+      // 1. Analyze with Gemini (Vision/Text)
+      const parsedAi = await analyzeWithGemini(clean, currentAttachment);
+      
+      const aiExtracted = parsedAi?.extracted || null;
       const aiIntent = String(aiExtracted?.intent || '').toLowerCase();
       const confirmByAI = aiIntent === 'confirm' || aiIntent === 'create';
 
+      // 2. Synthesize with backend logic to perform creation if validation succeeds
       const response = await assistantAPI.quickEntry({
         message: clean,
         draft,
         confirm: confirm || confirmByAI,
         aiExtracted,
       });
+      
       const payload: AssistantPayload = response?.data || {};
-      applyPayload(payload, aiIntelligence?.quickReplies || []);
+      applyPayload(payload, parsedAi?.quickReplies || []);
 
       const backendAssistant = String(payload.assistant || '').trim();
-      if (!backendAssistant && aiIntelligence?.assistantReply) {
-        pushMessage('assistant', aiIntelligence.assistantReply);
+      if (!backendAssistant && parsedAi?.assistantReply) {
+        pushMessage('assistant', parsedAi.assistantReply);
       }
-      if ((payload.missingFields?.length || 0) > 0 && aiIntelligence?.followUpQuestion) {
-        if (!backendAssistant.includes(aiIntelligence.followUpQuestion)) {
-          pushMessage('assistant', aiIntelligence.followUpQuestion);
+      if ((payload.missingFields?.length || 0) > 0 && parsedAi?.followUpQuestion) {
+        if (!backendAssistant.includes(parsedAi.followUpQuestion)) {
+          pushMessage('assistant', parsedAi.followUpQuestion);
         }
       }
 
       if (payload.record?.loan?.id) {
-        appToast.success('تم إنشاء السجل بنجاح وجرى مزامنته مع صفحة القروض.');
+        appToast.success('تأكيد العبقرية: تم إنشاء السجل بنجاح ومزامنته!');
         router.prefetch('/dashboard/loans');
         setQuickSuggestions(DEFAULT_SUGGESTIONS);
       }
     } catch (error: any) {
       const backendMessage = error?.response?.data?.assistant || error?.response?.data?.error;
-      const fallbackMessage = backendMessage || aiIntelligence?.assistantReply || 'تعذر إكمال العملية الآن. حاول مرة أخرى.';
+      const fallbackMessage = backendMessage || 'تعذر إكمال العملية الآن. حاول مرة أخرى أو تأكد من إدخال مفتاح API الخاص بجوجل.';
       pushMessage('assistant', fallbackMessage);
-      appToast.error(backendMessage || 'تعذر تنفيذ الإدخال السريع.');
-      if (aiIntelligence?.quickReplies?.length) {
-        setQuickSuggestions(normalizeSuggestionList([
-          ...aiIntelligence.quickReplies,
-          ...getSuggestionsFromMissing(missingFields),
-        ]));
-      }
+      appToast.error(backendMessage || 'تعذر قراءة التحليل البصري/النصي لـ Rabbit.');
     } finally {
       setLoading(false);
     }
@@ -447,10 +384,14 @@ export default function QuickEntryPage() {
   }, [searchParams]);
 
   const handleConfirmCreate = () => {
-    sendToAssistant('تأكيد', true);
+    sendToAssistant('تأكيد ومراجعة تم الانتهاء', true);
   };
 
   const handleSuggestionClick = (suggestion: string) => {
+    if (suggestion.includes('أرفق صورة')) {
+       fileInputRef.current?.click();
+       return;
+    }
     setInput(suggestion);
     composerRef.current?.focus();
     const end = suggestion.length;
@@ -459,6 +400,7 @@ export default function QuickEntryPage() {
 
   const handleReset = () => {
     setInput('');
+    setAttachment(null);
     setDraft(EMPTY_DRAFT);
     setMissingFields(['fullName', 'nationalId', 'mobileNumber', 'amount']);
     setCanCreate(false);
@@ -470,9 +412,27 @@ export default function QuickEntryPage() {
       {
         id: createId(),
         role: 'assistant',
-        text: 'جلسة جديدة جاهزة. اكتب اسم العميل مع الهوية والجوال والمبلغ للبدء.',
+        text: 'دورة إدخال جديدة. بانتظار النص السريع أو المرفقات البصرية لكي أمارس السحر!',
       },
     ]);
+  };
+
+  // Editable Handlers
+  const handleDraftChange = (group: 'customer' | 'loan', field: string, value: string | number | null) => {
+     setDraft(prev => ({
+        ...prev,
+        [group]: {
+           ...prev[group],
+           [field]: value
+        }
+     }));
+     // After any manual edit, let's mark it theoretically ready if basic keys exist
+     if (group === 'customer') {
+       if (field === 'fullName' || field === 'nationalId' || field === 'mobileNumber') {
+          // Trigger optimistic readiness
+          if (!canCreate) setCanCreate(true);
+       }
+     }
   };
 
   return (
@@ -483,11 +443,11 @@ export default function QuickEntryPage() {
             <BrandSignature />
             <div>
               <h1>Rabbit Entry • الإدخال السريع الذكي</h1>
-              <p>اكتب بلغة طبيعية، وRabbit يرتّب البيانات ويجهز السجل خطوة بخطوة.</p>
+              <p>النسخة المعززة بالذكاء الاصطناعي (Gemini Vision) للقراءة الآلية.</p>
             </div>
           </div>
           <div className="qe-header-actions">
-            <div className={`qe-ai-badge ${aiProviderState}`}>{aiProviderLabel}</div>
+            <div className="qe-ai-badge ready">Rabbit AI (Gemini) جاهز</div>
             <button type="button" className="qe-ghost-btn" onClick={handleReset}>
               <IconRefresh size={16} />
               <span>جلسة جديدة</span>
@@ -502,40 +462,26 @@ export default function QuickEntryPage() {
             <div className="qe-kpi-bar"><i style={{ width: `${completion}%` }} /></div>
           </article>
           <article className="qe-kpi">
-            <small>الحقول الناقصة</small>
-            <strong>{missingFields.length}</strong>
-            <p>{missingFields.length > 0 ? 'تحتاج استكمال قبل الإنشاء' : 'كل الحقول الأساسية مكتملة'}</p>
+            <small>الحقول المنطقية</small>
+            <strong>{missingFields.length > 0 ? missingFields.length : 0}</strong>
+            <p>{completion >= 100 ? 'كل الحقول الأساسية مكتملة' : 'راجع القيم في الشريط الجانبي'}</p>
           </article>
-          <article className={`qe-kpi ${canCreate ? 'ready' : ''}`}>
+          <article className={`qe-kpi ${canCreate || completion === 100 ? 'ready' : ''}`}>
             <small>وضع التنفيذ</small>
-            <strong>{canCreate ? 'جاهز للإنشاء' : 'تجهيز السجل'}</strong>
+            <strong>{canCreate || completion === 100 ? 'جاهز للإنشاء' : 'تجهيز السجل'}</strong>
             <p>{predictionLabel}</p>
           </article>
         </section>
 
-        <div className="qe-missing-strip">
-          <p className="qe-strip-label">متطلبات الإدخال</p>
-          <div className="qe-chip-row">
-            {prediction?.intent && (
-              <span className={`qe-chip rabbit ${prediction.intent === 'create' ? 'create' : ''}`}>
-                {prediction.intent === 'create' ? 'إنشاء مباشر' : 'استكمال بيانات'}
-                {typeof prediction.confidence === 'number' && ` (${Math.round(prediction.confidence * 100)}%)`}
-              </span>
-            )}
-            {missingFields.length > 0 ? (
-              missingFields.map((field) => (
-                <span key={field} className="qe-chip">{MISSING_FIELD_LABELS[field] || field}</span>
-              ))
-            ) : (
-              <span className="qe-chip success"><IconCheck size={14} /> البيانات مكتملة</span>
-            )}
-          </div>
-        </div>
-
         <div className="qe-messages" aria-live="polite">
           {messages.map((message) => (
             <article key={message.id} className={`qe-message ${message.role} ${message.tone || 'neutral'}`}>
-              <div className="qe-bubble">{message.text}</div>
+              <div className="qe-bubble">
+                {message.imagePreview && (
+                  <img src={message.imagePreview} alt="user attachment" style={{ maxWidth: '200px', borderRadius: '8px', marginBottom: '8px' }} />
+                )}
+                {message.text}
+              </div>
             </article>
           ))}
           {loading && (
@@ -553,8 +499,8 @@ export default function QuickEntryPage() {
         <footer className="qe-composer">
           <form onSubmit={handleSubmit}>
             <div className="qe-composer-head">
-              <span>رسالة الإدخال</span>
-              <small>يدعم الصياغة الحرة بالعربية ويتعامل مع النصوص المختصرة</small>
+              <span>رسالة الإدخال أو المرفقات</span>
+              <small>ارفع صورة هوية أو سند وسيقوم Rabbit بتفريغ كل البيانات منها آلياً.</small>
             </div>
             {quickSuggestions.length > 0 && (
               <div className="qe-suggestion-strip" aria-label="اقتراحات ذكية سريعة">
@@ -570,20 +516,51 @@ export default function QuickEntryPage() {
                 ))}
               </div>
             )}
-            <textarea
-              ref={composerRef}
-              value={input}
-              onChange={(event) => setInput(event.target.value)}
-              placeholder="مثال: العميل محمد أحمد، الهوية 1023456789، الجوال 0551234567، مبلغ 25000، نسبة الربح 12%"
-              rows={3}
-              disabled={loading}
-            />
-            <div className="qe-composer-actions">
-              <button type="submit" className="qe-primary-btn" disabled={loading || !input.trim()}>
+            
+            {/* Attachment Preview Box */}
+            {attachment && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', background: 'rgba(59, 130, 246, 0.1)', borderRadius: '8px', marginBottom: '8px', width: 'fit-content' }}>
+                 <IconPaperclip size={16} className="text-blue-600" />
+                 <span style={{ fontSize: '13px', color: '#1d4ed8' }}>{attachment.file.name.slice(0, 20)}...</span>
+                 <button type="button" onClick={() => setAttachment(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444' }}>
+                   <IconTrash size={16} />
+                 </button>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+               <input 
+                  type="file" 
+                  accept="image/jpeg, image/png, image/webp" 
+                  ref={fileInputRef} 
+                  style={{ display: 'none' }} 
+                  onChange={handleFileChange}
+               />
+               <button 
+                 type="button" 
+                 onClick={() => fileInputRef.current?.click()} 
+                 style={{ padding: '12px', borderRadius: '12px', border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer' }}
+                 aria-label="إرفاق ملف"
+               >
+                 <IconPaperclip size={20} className="text-slate-500" />
+               </button>
+
+               <textarea
+                 ref={composerRef}
+                 value={input}
+                 onChange={(event) => setInput(event.target.value)}
+                 placeholder="اكتب هنا أو أرفق مستنداً بالزر الجانبي للقراءة البصرية..."
+                 rows={3}
+                 disabled={loading}
+                 style={{ flex: 1 }}
+               />
+            </div>
+            <div className="qe-composer-actions" style={{ marginTop: '12px', justifyContent: 'flex-end', display: 'flex', gap: '12px' }}>
+              <button type="submit" className="qe-primary-btn" disabled={loading || (!input.trim() && !attachment)}>
                 <IconAI size={16} />
-                <span>{loading ? 'جاري المعالجة...' : 'إرسال'}</span>
+                <span>{loading ? 'جاري المعالجة السحرية...' : 'إرسال لـ Rabbit'}</span>
               </button>
-              {canCreate && (
+              {(canCreate || completion === 100) && (
                 <button
                   type="button"
                   className="qe-success-btn"
@@ -591,7 +568,7 @@ export default function QuickEntryPage() {
                   onClick={handleConfirmCreate}
                 >
                   <IconCheck size={16} />
-                  <span>إنشاء السجل الآن</span>
+                  <span>تأكيد المراجعة وإنشاء السجل الآن</span>
                 </button>
               )}
             </div>
@@ -601,22 +578,30 @@ export default function QuickEntryPage() {
 
       <aside className="qe-inspector">
         <div className="qe-inspector-head">
-          <h2>ملخص فوري للسجل</h2>
-          <p>كل ما يفهمه Rabbit يظهر هنا لحظة بلحظة قبل الإنشاء النهائي.</p>
+          <h2>مراجعة وتعديل فوري للسجل</h2>
+          <p>تستطيع التدخل اليدوي وتعديل أي قيمة لم يعجبك استخراج Rabbit لها هنا.</p>
         </div>
         <section className="qe-panel">
           <header>
             <IconUsers size={16} />
             <h2>بيانات العميل</h2>
           </header>
-          <dl>
-            <div><dt>الاسم</dt><dd>{draft.customer.fullName || '—'}</dd></div>
-            <div><dt>رقم الهوية</dt><dd>{draft.customer.nationalId || '—'}</dd></div>
-            <div><dt>الجوال</dt><dd>{draft.customer.mobileNumber || '—'}</dd></div>
-            <div><dt>النوع</dt><dd>{draft.customer.id ? 'عميل سابق' : 'عميل جديد'}</dd></div>
-          </dl>
+          <div className="qe-editable-fields">
+             <div className="qe-field">
+                <label>الاسم</label>
+                <input type="text" value={draft.customer.fullName || ''} onChange={(e) => handleDraftChange('customer', 'fullName', e.target.value)} placeholder="اسم العميل الرباعي" />
+             </div>
+             <div className="qe-field">
+                <label>رقم الهوية</label>
+                <input type="text" value={draft.customer.nationalId || ''} onChange={(e) => handleDraftChange('customer', 'nationalId', e.target.value)} placeholder="مثال: 1012345678" />
+             </div>
+             <div className="qe-field">
+                <label>الجوال</label>
+                <input type="text" dir="ltr" value={draft.customer.mobileNumber || ''} onChange={(e) => handleDraftChange('customer', 'mobileNumber', e.target.value)} placeholder="مثال: 0551234567" />
+             </div>
+          </div>
           {customerMatch && (
-            <p className="qe-note">
+            <p className="qe-note mt-2">
               تم التعرف على عميل سابق: <strong>{customerMatch.full_name}</strong>
             </p>
           )}
@@ -627,34 +612,41 @@ export default function QuickEntryPage() {
             <IconMoney size={16} />
             <h2>بيانات القرض</h2>
           </header>
-          <dl>
-            <div><dt>المبلغ</dt><dd>{formatCurrency(draft.loan.amount)}</dd></div>
-            <div><dt>نسبة الربح</dt><dd>{Number(draft.loan.profitPercentage || 0)}%</dd></div>
-            <div><dt>رقم السند</dt><dd>{draft.loan.receiptNumber || '—'}</dd></div>
-            <div><dt>تاريخ المعاملة</dt><dd>{draft.loan.transactionDate || getTodayIso()}</dd></div>
-          </dl>
+          <div className="qe-editable-fields">
+            <div className="qe-field">
+              <label>المبلغ (ر.س)</label>
+              <input type="number" dir="ltr" value={draft.loan.amount || ''} onChange={(e) => handleDraftChange('loan', 'amount', e.target.value ? Number(e.target.value) : null)} placeholder="مثال: 50000" />
+            </div>
+            <div className="qe-field">
+              <label>نسبة الربح (%)</label>
+              <input type="number" dir="ltr" value={draft.loan.profitPercentage || ''} onChange={(e) => handleDraftChange('loan', 'profitPercentage', e.target.value ? Number(e.target.value) : null)} placeholder="مثال: 15" />
+            </div>
+            <div className="qe-field">
+               <label>تاريخ المعاملة</label>
+               <input type="date" value={draft.loan.transactionDate || getTodayIso()} onChange={(e) => handleDraftChange('loan', 'transactionDate', e.target.value)} />
+            </div>
+          </div>
         </section>
 
         <section className="qe-panel compact">
           <header>
             <IconClipboard size={16} />
-            <h2>آخر عملية</h2>
+            <h2>آخر عملية تم تنفيذها</h2>
           </header>
           {lastRecord?.loan?.id ? (
             <div className="qe-last-record">
               <p>رقم القرض: <strong>{lastRecord.loan.id.slice(0, 8)}...</strong></p>
-              <p>المبلغ: <strong>{formatCurrency(lastRecord.loan.amount)}</strong></p>
-              <p>الحالة: <strong>{lastRecord.loan.status || 'Active'}</strong></p>
+              <p>المبلغ: <strong>{draft.loan.amount ? `${draft.loan.amount.toLocaleString()} ر.س` : '—'}</strong></p>
               <button
                 type="button"
-                className="qe-link-btn"
+                className="qe-link-btn mt-2"
                 onClick={() => router.push('/dashboard/loans')}
               >
-                فتح صفحة القروض
+                فتح سجل القروض للمتابعة
               </button>
             </div>
           ) : (
-            <p className="qe-note">لا توجد عملية مكتملة في هذه الجلسة بعد.</p>
+            <p className="qe-note">لم تقم بصناعة أي قرض في هذه الجلسة بعد.</p>
           )}
         </section>
       </aside>

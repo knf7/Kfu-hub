@@ -462,18 +462,6 @@ export default function DashboardPage() {
     }
   }, []);
 
-  const speakStep = useCallback((text: string) => {
-    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'ar-SA';
-    utterance.rate = 0.95;
-    const voices = window.speechSynthesis.getVoices();
-    const arabicVoice = voices.find((v) => /^ar\b/i.test(v.lang)) || voices.find((v) => /Arabic/i.test(v.name));
-    if (arabicVoice) utterance.voice = arabicVoice;
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(utterance);
-  }, []);
-
   const handleAIVoiceGuide = useCallback(async () => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
       setVoiceText('المتصفح لا يدعم الشرح الصوتي.');
@@ -539,8 +527,7 @@ export default function DashboardPage() {
     if (typeof window !== 'undefined') {
       localStorage.setItem('dashboard-onboarding-seen', '1');
     }
-    speakStep(GUIDE_STEPS[0].description);
-  }, [speakStep]);
+  }, []);
 
   const stopGuide = useCallback(() => {
     setGuideActive(false);
@@ -553,19 +540,13 @@ export default function DashboardPage() {
         setGuideActive(false);
         return prev;
       }
-      const nextIdx = prev + 1;
-      speakStep(GUIDE_STEPS[nextIdx].description);
-      return nextIdx;
+      return prev + 1;
     });
-  }, [speakStep]);
+  }, []);
 
   const prevGuideStep = useCallback(() => {
-    setGuideStepIndex((prev) => {
-      const nextIdx = prev <= 0 ? 0 : prev - 1;
-      speakStep(GUIDE_STEPS[nextIdx].description);
-      return nextIdx;
-    });
-  }, [speakStep]);
+    setGuideStepIndex((prev) => (prev <= 0 ? 0 : prev - 1));
+  }, []);
 
   useEffect(() => {
     if (guideActive) {
