@@ -117,6 +117,14 @@ type KpiItem = {
   trend?: string;
 };
 
+type GuideStep = {
+  id: string;
+  target: string;
+  title: string;
+  description: string;
+  actionPath?: string;
+};
+
 const MONTH_NAMES: Record<string, string> = {
   '01': 'يناير', '02': 'فبراير', '03': 'مارس', '04': 'أبريل',
   '05': 'مايو', '06': 'يونيو', '07': 'يوليو', '08': 'أغسطس',
@@ -126,6 +134,37 @@ const MONTH_NAMES: Record<string, string> = {
 const CHART_INTERVALS: Array<{ id: 'week' | 'month'; label: string }> = [
   { id: 'week', label: 'أسبوعي' },
   { id: 'month', label: 'شهري' },
+];
+
+const GUIDE_STEPS: GuideStep[] = [
+  {
+    id: 'quick-entry',
+    target: 'quick-entry',
+    title: 'الإدخال السريع',
+    description: 'من هنا تسجل عميل جديد وقرضه خلال دقائق عبر تدفق ذكي.',
+    actionPath: '/dashboard/quick-entry',
+  },
+  {
+    id: 'import-center',
+    target: 'import-center',
+    title: 'مركز الاستيراد',
+    description: 'استيراد ملفات القروض والعملاء من Excel/CSV بشكل دفعي.',
+    actionPath: '/dashboard/loans/import',
+  },
+  {
+    id: 'najiz',
+    target: 'najiz-sync',
+    title: 'متابعة ناجز',
+    description: 'تابع القضايا النشطة والمبالغ المتبقية مباشرة.',
+    actionPath: '/dashboard/najiz',
+  },
+  {
+    id: 'monthly-report',
+    target: 'monthly-report',
+    title: 'التقرير الشهري',
+    description: 'ولّد تقرير شهري شامل لمشاركة الأداء مع الإدارة.',
+    actionPath: '/dashboard/monthly-report',
+  },
 ];
 
 const DashboardChartSection = dynamic(() => import('./components/DashboardChartSection'), {
@@ -170,6 +209,9 @@ export default function DashboardPage() {
   const [loadHeavySections, setLoadHeavySections] = useState(false);
   const [refreshToken, setRefreshToken] = useState(0);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [guideActive, setGuideActive] = useState(false);
+  const [guideStepIndex, setGuideStepIndex] = useState(0);
+  const [guideRect, setGuideRect] = useState<DOMRect | null>(null);
   const notifiedRef = useRef({ summaryError: false, analyticsError: false, aiError: false, overdue: false });
 
   const todayLabel = useMemo(
@@ -258,6 +300,33 @@ export default function DashboardPage() {
     });
     return () => window.cancelAnimationFrame(frame);
   }, []);
+
+  const refreshGuideTarget = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    const step = GUIDE_STEPS[guideStepIndex];
+    if (!step) return;
+    const target = document.querySelector<HTMLElement>(`[data-guide="${step.target}"]`);
+    if (!target) {
+      setGuideRect(null);
+      return;
+    }
+    target.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+    setGuideRect(target.getBoundingClientRect());
+  }, [guideStepIndex]);
+
+  useEffect(() => {
+    if (!guideActive) return;
+    if (typeof window === 'undefined') return;
+    const raf = window.requestAnimationFrame(refreshGuideTarget);
+    const onViewportChange = () => window.requestAnimationFrame(refreshGuideTarget);
+    window.addEventListener('resize', onViewportChange);
+    window.addEventListener('scroll', onViewportChange, { passive: true });
+    return () => {
+      window.cancelAnimationFrame(raf);
+      window.removeEventListener('resize', onViewportChange);
+      window.removeEventListener('scroll', onViewportChange);
+    };
+  }, [guideActive, guideStepIndex, refreshGuideTarget]);
 
   const metrics = useMemo<DashboardMetrics>(() => summaryQuery.data?.metrics ?? {}, [summaryQuery.data?.metrics]);
   const najizSummary = summaryQuery.data?.najizSummary ?? null;
@@ -386,7 +455,36 @@ export default function DashboardPage() {
     }
   }, []);
 
+  const startGuide = useCallback(() => {
+    setGuideStepIndex(0);
+    setGuideActive(true);
+    setShowOnboarding(false);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('dashboard-onboarding-seen', '1');
+    }
+  }, []);
+
+  const stopGuide = useCallback(() => {
+    setGuideActive(false);
+    setGuideRect(null);
+  }, []);
+
+  const nextGuideStep = useCallback(() => {
+    setGuideStepIndex((prev) => {
+      if (prev >= GUIDE_STEPS.length - 1) {
+        setGuideActive(false);
+        return prev;
+      }
+      return prev + 1;
+    });
+  }, []);
+
+  const prevGuideStep = useCallback(() => {
+    setGuideStepIndex((prev) => (prev <= 0 ? 0 : prev - 1));
+  }, []);
+
   const isSummaryLoading = summaryQuery.isLoading && !summaryQuery.data;
+  const currentGuideStep = GUIDE_STEPS[guideStepIndex] ?? null;
 
   if (summaryQuery.isError && !summaryQuery.data) {
     return (
@@ -410,13 +508,16 @@ export default function DashboardPage() {
         </div>
 
         <div className="dbx-header-actions">
+          <button className="dbx-btn dbx-btn-secondary" onClick={startGuide}>
+            <Info size={16} /> <span className="hidden sm:inline">شرح تفاعلي</span>
+          </button>
           <button className="dbx-btn dbx-btn-secondary" onClick={handleRefresh}>
             <TrendingUp size={16} /> <span className="hidden sm:inline">تحديث</span>
           </button>
           <button className="dbx-btn dbx-btn-secondary" onClick={handleExportCSV}>
             <Download size={16} /> <span className="hidden sm:inline">تصدير CSV</span>
           </button>
-          <button className="dbx-btn dbx-btn-primary" onClick={() => router.push('/dashboard/loans/new')}>
+          <button className="dbx-btn dbx-btn-primary" data-guide="new-loan" onClick={() => router.push('/dashboard/loans/new')}>
             <Plus size={16} /> إضافة قرض
           </button>
         </div>
@@ -436,14 +537,23 @@ export default function DashboardPage() {
                 <div>3. حمّل <strong>التقرير الشهري</strong> لمراجعة الأداء ومشاركة النتائج.</div>
               </div>
             </div>
-            <button
-              type="button"
-              onClick={dismissOnboarding}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
-              aria-label="إغلاق الدليل السريع"
-            >
-              <X size={16} />
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={startGuide}
+                className="inline-flex h-10 items-center justify-center rounded-lg border border-blue-700 bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700"
+              >
+                ابدأ الجولة التفاعلية
+              </button>
+              <button
+                type="button"
+                onClick={dismissOnboarding}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+                aria-label="إغلاق الدليل السريع"
+              >
+                <X size={16} />
+              </button>
+            </div>
           </div>
         </section>
       )}
@@ -494,28 +604,28 @@ export default function DashboardPage() {
             <p>عمليات النظام المباشرة</p>
           </div>
           <div className="flex flex-col gap-3 flex-1">
-            <button className="dbx-action-card" onClick={() => router.push('/dashboard/quick-entry')}>
+            <button className="dbx-action-card" data-guide="quick-entry" onClick={() => router.push('/dashboard/quick-entry')}>
               <div className="flex items-center gap-2 mb-1">
                 <Rocket size={16} />
                 <strong>إدخال سريع (Rabbit)</strong>
               </div>
               <span>إنشاء عميل وقرض فوراً</span>
             </button>
-            <button className="dbx-action-card" onClick={() => router.push('/dashboard/najiz')}>
+            <button className="dbx-action-card" data-guide="najiz-sync" onClick={() => router.push('/dashboard/najiz')}>
               <div className="flex items-center gap-2 mb-1">
                 <Shield size={16} className="text-[#10b981] dark:text-[#34d399]" />
                 <strong>مزامنة ناجز</strong>
               </div>
               <span>التحقق من حالة القضايا</span>
             </button>
-            <button className="dbx-action-card" onClick={() => router.push('/dashboard/monthly-report')}>
+            <button className="dbx-action-card" data-guide="monthly-report" onClick={() => router.push('/dashboard/monthly-report')}>
               <div className="flex items-center gap-2 mb-1">
                 <BarChart3 size={16} className="text-[#8b5cf6] dark:text-[#a78bfa]" />
                 <strong>تقرير ختامي</strong>
               </div>
               <span>توليد التقرير الشهري</span>
             </button>
-            <button className="dbx-action-card" onClick={() => router.push('/dashboard/loans/import')}>
+            <button className="dbx-action-card" data-guide="import-center" onClick={() => router.push('/dashboard/loans/import')}>
               <div className="flex items-center gap-2 mb-1">
                 <Download size={16} className="text-[#2563eb]" />
                 <strong>مركز الاستيراد</strong>
@@ -638,6 +748,50 @@ export default function DashboardPage() {
           </div>
         </article>
       </section>
+
+      {guideActive && currentGuideStep && (
+        <>
+          <div className="dbx-guide-backdrop" onClick={stopGuide} />
+          {guideRect && (
+            <div
+              className="dbx-guide-focus"
+              style={{
+                top: Math.max(0, guideRect.top - 8),
+                left: Math.max(0, guideRect.left - 8),
+                width: guideRect.width + 16,
+                height: guideRect.height + 16,
+              }}
+            />
+          )}
+          <aside className="dbx-guide-popover" role="dialog" aria-label="جولة تعريفية">
+            <div className="dbx-guide-header">
+              <strong>الخطوة {guideStepIndex + 1} من {GUIDE_STEPS.length}</strong>
+              <button type="button" onClick={stopGuide} aria-label="إغلاق الجولة">
+                <X size={14} />
+              </button>
+            </div>
+            <h3>{currentGuideStep.title}</h3>
+            <p>{currentGuideStep.description}</p>
+            <div className="dbx-guide-actions">
+              <button type="button" className="dbx-btn dbx-btn-secondary" onClick={prevGuideStep} disabled={guideStepIndex === 0}>
+                السابق
+              </button>
+              {currentGuideStep.actionPath && (
+                <button
+                  type="button"
+                  className="dbx-btn dbx-btn-primary"
+                  onClick={() => router.push(currentGuideStep.actionPath as string)}
+                >
+                  تنفيذ الآن
+                </button>
+              )}
+              <button type="button" className="dbx-btn dbx-btn-secondary" onClick={nextGuideStep}>
+                {guideStepIndex === GUIDE_STEPS.length - 1 ? 'إنهاء' : 'التالي'}
+              </button>
+            </div>
+          </aside>
+        </>
+      )}
     </div>
   );
 }
