@@ -292,3 +292,11 @@
         right: -12px;
     }
 }
+
+/* Hide Support Widget when Tour Guide is active to avoid overlap */
+body.guide-active .support-widget {
+    transform: translateY(150px);
+    pointer-events: none;
+    opacity: 0;
+    transition: all 0.3s cubic-bezier(.4, 0, .2, 1);
+}

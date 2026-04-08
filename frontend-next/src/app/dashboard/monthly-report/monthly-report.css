@@ -185,11 +185,14 @@
 }
 
 .mr-card {
-  background: var(--mr-bg-card);
-  border: 1px solid var(--mr-border);
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(226, 232, 240, 1);
+  border-top: 1px solid rgba(255, 255, 255, 1);
   border-radius: 16px;
   padding: 24px;
-  box-shadow: 0 4px 20px rgba(15, 23, 42, 0.02);
+  box-shadow: 0 4px 24px rgba(15, 28, 51, 0.04), inset 0 2px 4px rgba(255, 255, 255, 0.7);
 }
 
 .mr-card.bg-brand {
