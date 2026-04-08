@@ -24,10 +24,7 @@
   content: "";
   position: fixed;
   inset: 0;
-  background: 
-    radial-gradient(ellipse at 15% 10%, rgba(37, 99, 235, 0.05) 0%, transparent 40%),
-    radial-gradient(ellipse at 85% 90%, rgba(139, 92, 246, 0.04) 0%, transparent 40%),
-    linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
   z-index: -1;
   pointer-events: none;
 }
@@ -35,32 +32,27 @@
 [data-theme="dark"] .mr-page {
   --mr-text: #f8fafc;
   --mr-text-secondary: #94a3b8;
-  --mr-bg-panel: rgba(15, 23, 42, 0.65);
-  --mr-bg-card: rgba(30, 41, 59, 0.75);
+  --mr-bg-panel: #0f172a;
+  --mr-bg-card: #162133;
   --mr-border: rgba(51, 65, 85, 0.6);
 }
 
 [data-theme="dark"] .mr-page::before {
-  background: 
-    radial-gradient(ellipse at 15% 10%, rgba(37, 99, 235, 0.15) 0%, transparent 40%),
-    radial-gradient(ellipse at 85% 90%, rgba(139, 92, 246, 0.1) 0%, transparent 40%),
-    linear-gradient(180deg, #090e17 0%, #0f172a 100%);
+  background: linear-gradient(180deg, #090e17 0%, #0f172a 100%);
 }
 
-/* Glassmorphism Header */
+/* Glassmorphism Header -> Solid Minimal Header */
 .mr-hero {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   flex-wrap: wrap;
   gap: 20px;
-  background: var(--mr-bg-panel);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  background: #ffffff;
   border: 1px solid var(--mr-border);
   padding: 24px 28px;
   border-radius: 20px;
-  box-shadow: 0 4px 24px rgba(15, 23, 42, 0.03), inset 0 2px 0 rgba(255, 255, 255, 0.4);
+  box-shadow: 0 4px 24px rgba(15, 23, 42, 0.03);
 }
 
 .mr-hero h1 {
@@ -198,6 +190,16 @@
   border-radius: 16px;
   padding: 24px;
   box-shadow: 0 4px 20px rgba(15, 23, 42, 0.02);
+}
+
+.mr-card.bg-brand {
+  background: #2563eb;
+  border-color: #1d4ed8;
+  color: #ffffff;
+}
+
+.mr-card.bg-brand * {
+  color: #ffffff !important;
 }
 
 .mr-card.wide { grid-column: 1 / -1; }

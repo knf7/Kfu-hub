@@ -20,7 +20,8 @@ import {
   TrendingUp,
   Users,
   Wallet,
-  Volume2
+  Volume2,
+  Scale
 } from 'lucide-react';
 import { appToast } from '@/components/ui/sonner';
 import { dashboardAPI, DASHBOARD_DIRTY_KEY } from '@/lib/dashboard-api';
@@ -455,11 +456,36 @@ export default function DashboardPage() {
     setShowOnboarding(false);
     if (typeof window !== 'undefined') {
       localStorage.setItem('dashboard-onboarding-seen', '1');
-      window.speechSynthesis.cancel();
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
     }
   }, []);
 
   const handleAIVoiceGuide = useCallback(async () => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
+      setVoiceText('المتصفح لا يدعم الشرح الصوتي.');
+      appToast.error('المتصفح لا يدعم ميزة القراءة الصوتية.');
+      return;
+    }
+
+    const speakText = (text: string) => {
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'ar-SA';
+      utterance.rate = 0.95;
+      utterance.pitch = 1;
+
+      const voices = window.speechSynthesis.getVoices();
+      const arabicVoice = voices.find((v) => /^ar\b/i.test(v.lang)) || voices.find((v) => /Arabic/i.test(v.name));
+      if (arabicVoice) utterance.voice = arabicVoice;
+
+      utterance.onend = () => setIsPlayingAI(false);
+      utterance.onerror = () => setIsPlayingAI(false);
+
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(utterance);
+    };
+
     if (isPlayingAI) {
       window.speechSynthesis.cancel();
       setIsPlayingAI(false);
@@ -480,24 +506,17 @@ export default function DashboardPage() {
         body: JSON.stringify({ prompt: "أنت المساعد الذكي لنظام (أصيل المالي SaaS). قم بشرح مختصر جداً ومبسط بصيغة المذكر كأنك إنسان (في سطرين) عن كيفية عمل النظام وكيف يتم أتمتة المطالبات والتقارير. اجعل الشرح لطيفاً كأنك تتحدث صوتياً ولا تضع أية علامات ترقيم غريبة." })
       });
       const data = await response.json();
-      
-      if (data?.text) {
-        setVoiceText(data.text);
-        const utterance = new SpeechSynthesisUtterance(data.text);
-        utterance.lang = 'ar-SA';
-        utterance.rate = 0.95;
-        
-        utterance.onend = () => setIsPlayingAI(false);
-        utterance.onerror = () => setIsPlayingAI(false);
-        
-        window.speechSynthesis.speak(utterance);
-      } else {
-        setIsPlayingAI(false);
-        setVoiceText('حدث خطأ في تحميل الشرح.');
-      }
+      const fallbackText =
+        'مرحباً بك في أصيل المالي. من هنا تقدر تضيف القروض والعملاء بسرعة، وتتابع ناجز، وتطلع التقرير الشهري خلال ثواني.';
+
+      const textToSpeak = response.ok && data?.text ? data.text : fallbackText;
+      setVoiceText(textToSpeak);
+      speakText(textToSpeak);
     } catch {
-      setIsPlayingAI(false);
-      setVoiceText('خطأ في الاتصال بالذكاء الاصطناعي.');
+      const fallbackText =
+        'جاهز معك. ابدأ بالإدخال السريع، ثم راقب التحصيل والمتأخرات، وبعدها صدّر التقرير الشهري.';
+      setVoiceText(fallbackText);
+      speakText(fallbackText);
     }
   }, [isPlayingAI]);
 
@@ -637,8 +656,8 @@ export default function DashboardPage() {
       <section className="grid lg:grid-cols-3 gap-6">
         <article className="dbx-card lg:col-span-2">
           <div className="dbx-card-head">
-            <h2>الأداء المالي (الاتجاهات)</h2>
-            <p>تحليل مسار الديون والتحصيل زمنياً</p>
+            <h2>الاتجاهات ومسار المحفظة</h2>
+            <p>تحليل مسار الديون والتحصيل بناءً على بيانات المركز المالي</p>
           </div>
           {loadHeavySections ? (
             <DashboardChartSection
@@ -652,39 +671,35 @@ export default function DashboardPage() {
           )}
         </article>
 
-        <article className="dbx-card flex flex-col">
+        <article className="dbx-card bg-brand flex flex-col justify-between">
           <div className="dbx-card-head">
-            <h2>إجراءات سريعة</h2>
-            <p>عمليات النظام المباشرة</p>
+            <h2 className="text-white">إجراءات سريعة</h2>
+            <p className="text-blue-100">بوابة العمليات المباشرة والمسارات</p>
           </div>
-          <div className="flex flex-col gap-3 flex-1">
-            <button className="dbx-action-card" data-guide="quick-entry" onClick={() => router.push('/dashboard/quick-entry')}>
-              <div className="flex items-center gap-2 mb-1">
-                <Rocket size={16} />
-                <strong>إدخال سريع (Rabbit)</strong>
+          <div className="dbx-quick-grid flex-1">
+            <button className="dbx-action-card transition-colors duration-200 !bg-white/10 hover:!bg-white/20 !border-white/10" data-guide="quick-entry" onClick={() => router.push('/dashboard/quick-entry')}>
+              <div className="flex flex-col items-center justify-center h-full gap-2 text-center pt-2">
+                <Users size={22} className="!text-white mb-1" />
+                <strong className="!text-white !font-bold text-[0.95rem]">إضافة وتوثيق عميل</strong>
               </div>
-              <span>إنشاء عميل وقرض فوراً</span>
             </button>
-            <button className="dbx-action-card" data-guide="najiz-sync" onClick={() => router.push('/dashboard/najiz')}>
-              <div className="flex items-center gap-2 mb-1">
-                <Shield size={16} className="text-[#10b981] dark:text-[#34d399]" />
-                <strong>مزامنة ناجز</strong>
+            <button className="dbx-action-card transition-colors duration-200 !bg-white/10 hover:!bg-white/20 !border-white/10" data-guide="new-loan" onClick={() => router.push('/dashboard/loans/new')}>
+              <div className="flex flex-col items-center justify-center h-full gap-2 text-center pt-2">
+                <Plus size={22} className="!text-white mb-1" />
+                <strong className="!text-white !font-bold text-[0.95rem]">قرض جديد</strong>
               </div>
-              <span>التحقق من حالة القضايا</span>
             </button>
-            <button className="dbx-action-card" data-guide="monthly-report" onClick={() => router.push('/dashboard/monthly-report')}>
-              <div className="flex items-center gap-2 mb-1">
-                <BarChart3 size={16} className="text-[#8b5cf6] dark:text-[#a78bfa]" />
-                <strong>تقرير ختامي</strong>
+            <button className="dbx-action-card transition-colors duration-200 !bg-white/10 hover:!bg-white/20 !border-white/10" data-guide="monthly-report" onClick={() => router.push('/dashboard/monthly-report')}>
+              <div className="flex flex-col items-center justify-center h-full gap-2 text-center pt-2">
+                <BarChart3 size={22} className="!text-white mb-1" />
+                <strong className="!text-white !font-bold text-[0.95rem]">تقارير ختامية</strong>
               </div>
-              <span>توليد التقرير الشهري</span>
             </button>
-            <button className="dbx-action-card" data-guide="import-center" onClick={() => router.push('/dashboard/loans/import')}>
-              <div className="flex items-center gap-2 mb-1">
-                <Download size={16} className="text-[#2563eb]" />
-                <strong>مركز الاستيراد</strong>
+            <button className="dbx-action-card transition-colors duration-200 !bg-white/10 hover:!bg-white/20 !border-white/10" data-guide="import-center" onClick={() => router.push('/dashboard/loans/import')}>
+              <div className="flex flex-col items-center justify-center h-full gap-2 text-center pt-2">
+                <Download size={22} className="!text-white mb-1" />
+                <strong className="!text-white !font-bold text-[0.95rem]">بيانات (تصدير/استيراد)</strong>
               </div>
-              <span>استيراد ملفات القروض أو العملاء</span>
             </button>
           </div>
         </article>
@@ -693,23 +708,12 @@ export default function DashboardPage() {
       {/* Level 3: Tables (Najiz Details and Overview) */}
       <section className="grid lg:grid-cols-2 gap-6">
         <article className="dbx-card">
-          <div className="dbx-card-head dbx-card-head-inline">
+          <div className="dbx-card-head dbx-card-head-inline border-b border-[#e2e8f0] pb-4 mb-4 dark:border-[#1e293b]">
             <div>
-              <h2>ملخص قضايا ناجز</h2>
-              <p>آخر التحديثات للمطالبات المسجلة</p>
+              <h2 className="flex items-center gap-2">نظام التكامل <Scale size={18} /></h2>
+              <p>حالة وتحديثات قضايا ناجز</p>
             </div>
-            <button className="dbx-btn dbx-btn-secondary h-8 px-3 text-[0.8rem]" onClick={() => router.push('/dashboard/najiz')}>عرض الكل</button>
-          </div>
-
-          <div className="flex items-center gap-6 mb-6 pb-6 border-b border-[#e2e8f0] dark:border-[#1e293b]">
-            <div className="flex-1">
-               <div className="text-[0.8rem] text-[#64748b] font-medium mb-1">قضايا نشطة</div>
-               <div className="text-[1.5rem] font-black t-num text-[#0f1c33] dark:text-[#f8fafc]">{formatCount(najizSummary?.activeCases)}</div>
-            </div>
-            <div className="flex-1">
-               <div className="text-[0.8rem] text-[#64748b] font-medium mb-1">إجمالي المتبقي للتحصيل</div>
-               <div className="text-[1.5rem] font-black t-num text-[#ef4444] dark:text-[#fca5a5]">{formatCurrency(metrics.najizRemainingAmount)}</div>
-            </div>
+            <button className="text-blue-600 font-bold hover:text-blue-800 text-[0.8rem] px-2" onClick={() => router.push('/dashboard/najiz')}>مزامنة قسرية</button>
           </div>
 
           {najizDetails.length === 0 ? (
@@ -752,14 +756,14 @@ export default function DashboardPage() {
         <article className="dbx-card">
           <div className="dbx-card-head dbx-card-head-inline">
             <div>
-              <h2>التنبيهات والمخاطر</h2>
-              <p>حالات تتطلب اتخاذ إجراء فوري</p>
+              <h2>رؤى ومخاطر</h2>
+              <p>تنبيهات تلقائية مبنية على الأداء</p>
             </div>
           </div>
           
           <div className="flex flex-col gap-4">
              {overdueCount > 0 ? (
-               <div className="flex items-start gap-4 p-4 rounded-xl border border-[#fecaca] bg-[#fef2f2] dark:border-[#7f1d1d] dark:bg-[#450a0a]">
+               <div className="flex items-start gap-4 p-5 rounded-xl border border-[#e2e8f0] bg-[#f8fafc] dark:border-[#334155] dark:bg-[#1e293b] border-l-4 border-l-[#ef4444]">
                  <div className="w-10 h-10 shrink-0 bg-[#ef4444] text-white rounded-full flex items-center justify-center">
                     <AlertTriangle size={18} />
                  </div>

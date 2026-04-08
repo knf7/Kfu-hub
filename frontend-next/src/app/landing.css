@@ -1,18 +1,18 @@
 :root {
-  --lp-bg: #f5f8fd;
+  --lp-bg: #f8fafc;
   --lp-surface: #ffffff;
   --lp-ink: #0f1c33;
   --lp-muted: #5b6f8f;
-  --lp-line: #dce5f3;
-  --lp-primary: #1d77ff;
-  --lp-primary-strong: #0f54c3;
-  --lp-success: #0e9b76;
+  --lp-line: #e2e8f0;
+  --lp-primary: #2563eb; /* Deep Blue Private Banking */
+  --lp-primary-strong: #1d4ed8;
+  --lp-success: #10b981;
   --lp-violet: #8b5cf6;
   --lp-violet-soft: #a78bfa;
-  --lp-amber: #fbbf24;
+  --lp-amber: #f59e0b;
   --lp-danger: #ef4444;
   --lp-sky: #38bdf8;
-  --lp-primary-soft-fill: rgba(29, 119, 255, 0.1);
+  --lp-primary-soft-fill: rgba(37, 99, 235, 0.1);
 }
 
 /* Global Reset */

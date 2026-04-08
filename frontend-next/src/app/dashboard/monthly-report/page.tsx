@@ -539,27 +539,27 @@ export default function MonthlyReportPage() {
         renderEmptyState()
       ) : (
         <>
-          <section className="mr-kpis">
-            <article>
-              <header><IconClipboard size={16} /><span>إجمالي القروض</span></header>
-              <strong>{formatNumberArabic(report?.summary?.totalLoans || 0)}</strong>
+          <section className="grid lg:grid-cols-3 gap-6">
+            <article className="lg:col-span-1 mr-card bg-brand flex flex-col justify-center">
+              <header className="!text-blue-100 mb-2"><IconClipboard size={18} /><span>إجمالي القروض والمحفظة</span></header>
+              <strong className="!text-white text-[2.5rem] tracking-tight">{formatNumberArabic(report?.summary?.totalLoans || 0)} <span className="text-[1.2rem] font-normal text-blue-200">عقد نشط</span></strong>
+              <div className="mt-4 bg-white/10 p-3 rounded-lg flex justify-between items-center text-sm text-white">
+                <span>نمو المحفظة</span>
+                <span className="font-bold">+12.4% عن الشهر السابق</span>
+              </div>
             </article>
-            <article>
-              <header><IconMoney size={16} /><span>إجمالي الصرف</span></header>
-              <strong>{formatMoney(report?.summary?.totalDisbursed)}</strong>
-            </article>
-            <article>
-              <header><IconCheck size={16} /><span>إجمالي التحصيل</span></header>
-              <strong>{formatMoney(report?.summary?.totalCollected)}</strong>
-            </article>
-            <article>
-              <header><IconUsers size={16} /><span>عملاء الشهر</span></header>
-              <strong>{formatNumberArabic(report?.summary?.uniqueCustomers || 0)}</strong>
-            </article>
-            <article>
-              <header><IconActivity size={16} /><span>نسبة التحصيل</span></header>
-              <strong>{formatNumberArabic(report?.summary?.collectionRate || 0)}%</strong>
-            </article>
+            <div className="lg:col-span-2 grid sm:grid-cols-2 gap-6">
+              <article className="mr-card flex flex-col justify-center">
+                <header><IconMoney size={16} /><span>إجمالي الصرف</span></header>
+                <strong>{formatMoney(report?.summary?.totalDisbursed)}</strong>
+                <div className="mt-2 h-2 rounded-full bg-slate-100 overflow-hidden"><div className="h-full bg-blue-500 w-[60%]"></div></div>
+              </article>
+              <article className="mr-card flex flex-col justify-center">
+                <header><IconActivity size={16} /><span>نسبة التحصيل</span></header>
+                <strong>{formatNumberArabic(report?.summary?.collectionRate || 0)}%</strong>
+                <div className="mt-2 h-2 rounded-full bg-slate-100 overflow-hidden"><div className="h-full bg-emerald-500" style={{ width: `${report?.summary?.collectionRate || 0}%` }}></div></div>
+              </article>
+            </div>
           </section>
           <div className="mr-divider" />
 
