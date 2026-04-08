@@ -1,8 +1,17 @@
 const express = require('express');
 const { authenticateToken, injectMerchantId, injectRlsContext, checkPermission } = require('../middleware/auth');
 const { clearCacheByPrefix } = require('../utils/cache');
+const rateLimit = require('express-rate-limit');
 
 const router = express.Router();
+
+const geminiLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, 
+    max: 20, 
+    message: { error: 'Too many requests, please try again later.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+});
 
 const toEnglishDigits = (input) =>
     String(input || '')
@@ -508,6 +517,46 @@ router.post('/quick-entry', checkPermission('can_add_loans'), async (req, res) =
     } catch (err) {
         console.error('Quick-entry assistant error:', err);
         res.status(500).json({ error: 'تعذر معالجة الإدخال السريع حالياً.' });
+    }
+});
+
+router.post('/gemini-explain', geminiLimiter, async (req, res) => {
+    try {
+        const apiKey = process.env.GEMINI_API_KEY;
+        if (!apiKey) {
+            return res.status(503).json({ error: 'GEMINI_API_KEY is not configured.' });
+        }
+        // Allow dynamic prompt if passed
+        const promptText = req.body?.prompt || "أنت المساعد الذكي لنظام (أصيل المالي SaaS). بناء على لوحة التحكم التي تراها أمام المستخدم، قم بإعطاء نظرة عامة مختصرة ومشجعة للإجراءات السريعة. تحدث باختصار كأنك مساعد صوتي.";
+        
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-goog-api-key': apiKey,
+            },
+            body: JSON.stringify({
+                contents: [
+                    {
+                        parts: [
+                            { text: promptText }
+                        ]
+                    }
+                ]
+            })
+        });
+
+        const data = await response.json();
+        if (!response.ok) {
+            console.error('Gemini error:', data);
+            return res.status(response.status || 500).json({ error: 'Failed' });
+        }
+        
+        const explanation = data?.candidates?.[0]?.content?.parts?.[0]?.text || 'مرحباً، أنا الذكاء الاصطناعي. مستعد للعمل معك.';
+        res.json({ text: explanation.trim() });
+    } catch (err) {
+        console.error('Gemini Error:', err);
+        res.status(500).json({ error: 'Failed to access Gemini AI.' });
     }
 });
 

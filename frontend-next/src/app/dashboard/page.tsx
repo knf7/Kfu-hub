@@ -20,6 +20,7 @@ import {
   TrendingUp,
   Users,
   Wallet,
+  Volume2
 } from 'lucide-react';
 import { appToast } from '@/components/ui/sonner';
 import { dashboardAPI, DASHBOARD_DIRTY_KEY } from '@/lib/dashboard-api';
@@ -211,6 +212,8 @@ export default function DashboardPage() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [guideActive, setGuideActive] = useState(false);
   const [guideStepIndex, setGuideStepIndex] = useState(0);
+  const [isPlayingAI, setIsPlayingAI] = useState(false);
+  const [voiceText, setVoiceText] = useState('');
   const [guideRect, setGuideRect] = useState<DOMRect | null>(null);
   const notifiedRef = useRef({ summaryError: false, analyticsError: false, aiError: false, overdue: false });
 
@@ -452,8 +455,51 @@ export default function DashboardPage() {
     setShowOnboarding(false);
     if (typeof window !== 'undefined') {
       localStorage.setItem('dashboard-onboarding-seen', '1');
+      window.speechSynthesis.cancel();
     }
   }, []);
+
+  const handleAIVoiceGuide = useCallback(async () => {
+    if (isPlayingAI) {
+      window.speechSynthesis.cancel();
+      setIsPlayingAI(false);
+      return;
+    }
+    
+    setIsPlayingAI(true);
+    setVoiceText('جاري تحضير الشرح...');
+    
+    try {
+      const response = await fetch('/api/assistant/gemini-explain', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
+          'X-Merchant-ID': localStorage.getItem('merchantId') || '',
+        },
+        body: JSON.stringify({ prompt: "أنت المساعد الذكي لنظام (أصيل المالي SaaS). قم بشرح مختصر جداً ومبسط بصيغة المذكر كأنك إنسان (في سطرين) عن كيفية عمل النظام وكيف يتم أتمتة المطالبات والتقارير. اجعل الشرح لطيفاً كأنك تتحدث صوتياً ولا تضع أية علامات ترقيم غريبة." })
+      });
+      const data = await response.json();
+      
+      if (data?.text) {
+        setVoiceText(data.text);
+        const utterance = new SpeechSynthesisUtterance(data.text);
+        utterance.lang = 'ar-SA';
+        utterance.rate = 0.95;
+        
+        utterance.onend = () => setIsPlayingAI(false);
+        utterance.onerror = () => setIsPlayingAI(false);
+        
+        window.speechSynthesis.speak(utterance);
+      } else {
+        setIsPlayingAI(false);
+        setVoiceText('حدث خطأ في تحميل الشرح.');
+      }
+    } catch {
+      setIsPlayingAI(false);
+      setVoiceText('خطأ في الاتصال بالذكاء الاصطناعي.');
+    }
+  }, [isPlayingAI]);
 
   const startGuide = useCallback(() => {
     setGuideStepIndex(0);
@@ -524,20 +570,27 @@ export default function DashboardPage() {
       </header>
 
       {showOnboarding && (
-        <section className="dbx-card border-blue-100 bg-blue-50/60 dark:border-blue-900 dark:bg-blue-950/20">
+        <section className="dbx-card border-blue-100 bg-blue-50/60 dark:border-blue-900 dark:bg-blue-950/20 shadow-coral">
           <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <h2 className="text-[1.1rem] font-bold text-[#0f1c33] dark:text-white">دليل سريع للمستخدم الجديد</h2>
-              <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-                ابدأ بهذه الخطوات الثلاث لتشغيل النظام مباشرة.
+            <div className="flex-1 min-w-[280px]">
+              <h2 className="text-[1.2rem] font-bold text-[#0f1c33] dark:text-white flex items-center gap-2">
+                دليل الاستخدام السريع
+                {isPlayingAI && <span className="ai-voice-wave ml-2 text-blue-600 dark:text-blue-400"><span></span><span></span><span></span></span>}
+              </h2>
+              <p className="mt-1 text-[0.95rem] text-slate-600 dark:text-slate-300 leading-relaxed font-medium">
+                {voiceText || 'استمع إلى المساعد الذكي لتعرف أهم ميزات النظام وكيفية البدء الفوري في العمل.'}
               </p>
-              <div className="mt-4 grid gap-2 text-sm text-slate-700 dark:text-slate-200">
-                <div>1. أدخل القروض أو العملاء عبر <strong>الإدخال السريع</strong> أو <strong>مركز الاستيراد</strong>.</div>
-                <div>2. راقب التحصيل والمتأخرات من <strong>لوحة التحكم</strong> و <strong>قضايا ناجز</strong>.</div>
-                <div>3. حمّل <strong>التقرير الشهري</strong> لمراجعة الأداء ومشاركة النتائج.</div>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleAIVoiceGuide}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                >
+                  <Volume2 size={16} />
+                  {isPlayingAI ? 'إيقاف الشرح الصوتي' : 'تشغيل الشرح الصوتي'}
+                </button>
               </div>
-            </div>
-            <div className="flex items-center gap-2">
+              <div className="mt-3 flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={startGuide}
@@ -553,6 +606,7 @@ export default function DashboardPage() {
               >
                 <X size={16} />
               </button>
+              </div>
             </div>
           </div>
         </section>

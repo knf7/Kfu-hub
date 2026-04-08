@@ -581,70 +581,90 @@ export default function MonthlyReportPage() {
               </div>
 
               <div className="mr-tracking-grid">
-                <div className="mr-tracking-col">
-                  <h3>قضايا ناجز من الشهر المختار حتى الآن</h3>
-                  <div className="mr-track-table">
-                    <div className="mr-track-head" aria-hidden="true">
-                      <span>العميل</span>
-                      <span>المبالغ</span>
-                      <span>الحالة / القضية</span>
-                      <span>التاريخ</span>
-                    </div>
-                    {najizCases.length === 0 && <p className="mr-empty">لا توجد قضايا ناجز ضمن الفترة التراكمية المختارة.</p>}
-                    {najizCases.map((item) => (
-                      <div key={item.loanId} className={`mr-track-row ${getStatusClass(item.status)}`}>
-                        <div>
-                          <strong>{item.customerName || '—'}</strong>
-                          <small>{item.mobileNumber || 'بدون جوال'}</small>
-                        </div>
-                        <div>
-                          <b>{formatMoney(item.amount)}</b>
-                          <small>محصل: {formatMoney(item.collectedAmount)}</small>
-                        </div>
-                        <div>
-                          <em>{STATUS_LABELS[item.status] || item.status}</em>
-                          <small>{item.najizCaseNumber || 'بدون رقم قضية'}</small>
-                        </div>
-                        <div>
-                          <small>{formatDate(item.transactionDate)}</small>
-                          <small>من {formatMonthYear(item.transactionDate)}</small>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                <div className="mr-card">
+                  <h2>قضايا ناجز المشمولة بالتقرير</h2>
+                  {najizCases.length === 0 ? (
+                    <p className="mr-empty">لا توجد قضايا ناجز ضمن هذه الفترة.</p>
+                  ) : (
+                    <table className="mr-track-table">
+                      <thead>
+                        <tr>
+                          <th>العميل</th>
+                          <th>الحالة</th>
+                          <th>المبلغ</th>
+                          <th>المحصل</th>
+                          <th>تاريخ المعاملة</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {najizCases.map((item) => (
+                          <tr key={item.loanId} className="mr-track-row">
+                            <td>
+                              <strong>{item.customerName || '—'}</strong>
+                              <span className="mr-sub">{item.mobileNumber || 'بدون جوال'}</span>
+                            </td>
+                            <td>
+                              <span className={`mr-status-badge ${item.status === 'Active' ? 'mr-badge-warning' : item.status === 'Paid' ? 'mr-badge-success' : 'mr-badge-danger'}`}>
+                                {STATUS_LABELS[item.status] || item.status}
+                              </span>
+                              <span className="mr-sub">{item.najizCaseNumber || 'بدون قضية'}</span>
+                            </td>
+                            <td className="mr-amount">{formatMoney(item.amount)}</td>
+                            <td>{formatMoney(item.collectedAmount)}</td>
+                            <td>
+                              {formatDate(item.transactionDate)}
+                              <span className="mr-sub">من {formatMonthYear(item.transactionDate)}</span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
                 </div>
 
-                <div className="mr-tracking-col">
-                  <h3>غير المسددين من الشهر المختار حتى الآن</h3>
-                  <div className="mr-track-table">
-                    <div className="mr-track-head" aria-hidden="true">
-                      <span>العميل</span>
-                      <span>المبالغ</span>
-                      <span>الحالة / القضية</span>
-                      <span>التاريخ</span>
-                    </div>
-                    {monthEndUnpaid.length === 0 && <p className="mr-empty">لا توجد قروض غير مسددة ضمن الفترة التراكمية.</p>}
-                    {monthEndUnpaid.map((item) => (
-                      <div key={item.loanId} className={`mr-track-row ${getStatusClass(item.status)}`}>
-                        <div>
-                          <strong>{item.customerName || '—'}</strong>
-                          <small>{item.mobileNumber || 'بدون جوال'}</small>
-                        </div>
-                        <div>
-                          <b>{formatMoney(item.amount)}</b>
-                          <small>{item.hasNajizCase ? 'مرتبط بناجز' : 'بدون ناجز'}</small>
-                        </div>
-                        <div>
-                          <em>{STATUS_LABELS[item.status] || item.status}</em>
-                          <small>{item.najizCaseNumber || '—'}</small>
-                        </div>
-                        <div>
-                          <small>{formatDate(item.transactionDate)}</small>
-                          <small>من {formatMonthYear(item.transactionDate)}</small>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                <div className="mr-card">
+                  <h2>قائمة غير المسددين</h2>
+                  {monthEndUnpaid.length === 0 ? (
+                    <p className="mr-empty">لا توجد قروض غير مسددة ضمن هذه الفترة.</p>
+                  ) : (
+                    <table className="mr-track-table">
+                      <thead>
+                        <tr>
+                          <th>العميل</th>
+                          <th>الحالة</th>
+                          <th>المبلغ</th>
+                          <th>ارتباط ناجز</th>
+                          <th>تاريخ المعاملة</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {monthEndUnpaid.map((item) => (
+                          <tr key={item.loanId} className="mr-track-row">
+                            <td>
+                              <strong>{item.customerName || '—'}</strong>
+                              <span className="mr-sub">{item.mobileNumber || '—'}</span>
+                            </td>
+                            <td>
+                              <span className={`mr-status-badge ${item.status === 'Active' ? 'mr-badge-warning' : 'mr-badge-danger'}`}>
+                                {STATUS_LABELS[item.status] || item.status}
+                              </span>
+                            </td>
+                            <td className="mr-amount">{formatMoney(item.amount)}</td>
+                            <td>
+                              <span className={`mr-status-badge ${item.hasNajizCase ? 'mr-badge-warning' : 'mr-badge-success'}`}>
+                                {item.hasNajizCase ? 'نعم' : 'لا'}
+                              </span>
+                              {item.najizCaseNumber && <span className="mr-sub">{item.najizCaseNumber}</span>}
+                            </td>
+                            <td>
+                              {formatDate(item.transactionDate)}
+                              <span className="mr-sub">من {formatMonthYear(item.transactionDate)}</span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
                 </div>
               </div>
             </article>
